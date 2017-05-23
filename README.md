@@ -2,7 +2,13 @@
 
 Clean DNS, like [ChinaDNS].
 
-[![Build status](https://ci.appveyor.com/api/projects/status/v7bvx6hp4b3vedx1?svg=true)](https://ci.appveyor.com/project/GangZhuo/cleandns)
+#### Appveyor
+
+  [![Build status](https://ci.appveyor.com/api/projects/status/v7bvx6hp4b3vedx1?svg=true)](https://ci.appveyor.com/project/GangZhuo/cleandns)
+
+#### Travis CI
+
+  [![Travis CI](https://travis-ci.org/GangZhuo/CleanDNS.svg?branch=master)](https://travis-ci.org/GangZhuo/CleanDNS)
 
 ### Install
 
