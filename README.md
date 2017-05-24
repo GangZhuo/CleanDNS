@@ -1,6 +1,6 @@
 # CleanDNS
 
-Clean DNS, like [ChinaDNS].
+Non-polluting DNS. Support ECS (edns-client-subnet).
 
 #### Appveyor
 
