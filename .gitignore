@@ -36,3 +36,6 @@ unit-test
 # ctags
 tags
 
+# vim
+*.swp
+
