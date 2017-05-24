@@ -158,7 +158,7 @@ static void test_parse_request()
 	ns_msg_free(&msg);
 	r = init_ns_msg(&msg);
 	assert(r == 0);
-	r = ns_parse(&msg, s.array, s.size);
+	r = ns_parse(&msg, (uint8_t *)s.array, s.size);
 	assert(r == 0);
 	check_ns_msg(&msg, 0);
 
