@@ -123,7 +123,7 @@ static void test_parse_request()
 
 	printf("\nRAW ns_msg: \n");
 	r = sizeof(ns_msg_bytes);
-	bprint(ns_msg_bytes, r);
+	bprint((char *)ns_msg_bytes, r);
 
 	printf("\n");
 
@@ -177,7 +177,7 @@ static void test_parse_request()
 	ns_msg_free(&msg);
 	r = init_ns_msg(&msg);
 	assert(r == 0);
-	r = ns_parse(&msg, s.array, s.size);
+	r = ns_parse(&msg, (uint8_t *)s.array, s.size);
 	assert(r == 0);
 	check_ns_msg(&msg, 0);
 
@@ -209,7 +209,7 @@ static void test_parse_request()
 	ns_msg_free(&msg);
 	r = init_ns_msg(&msg);
 	assert(r == 0);
-	r = ns_parse(&msg, s.array, s.size);
+	r = ns_parse(&msg, (uint8_t *)s.array, s.size);
 	assert(r == 0);
 	check_ns_msg(&msg, 1);
 
@@ -238,7 +238,7 @@ static void test_parse_request()
 	ns_msg_free(&msg);
 	r = init_ns_msg(&msg);
 	assert(r == 0);
-	r = ns_parse(&msg, s.array, s.size);
+	r = ns_parse(&msg, (uint8_t *)s.array, s.size);
 	assert(r == 0);
 	check_ns_msg(&msg, 1);
 

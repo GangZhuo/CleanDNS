@@ -522,7 +522,7 @@ int ns_parse(ns_msg_t *msg, uint8_t *bytes, int nbytes)
 	ns_qr_t *qr;
 	ns_rr_t *rr;
 
-	s.array = bytes;
+	s.array = (char *)bytes;
 	s.cap = nbytes;
 	s.size = nbytes;
 	s.pos = 0;

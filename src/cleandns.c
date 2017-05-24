@@ -227,7 +227,7 @@ static int queue_add(cleandns_ctx *cleandns, req_t *req)
     do {
         newid = (uint16_t)(rand() % 0xFFFF);
         newid &= 0xFE;
-    } while(newid == -1 || rbtree_lookup(&cleandns->queue, (int)newid));
+    } while(newid == 0xffff || rbtree_lookup(&cleandns->queue, (int)newid));
 
     req->id = newid;
 
@@ -455,7 +455,7 @@ static int handle_listen_sock_recv(cleandns_ctx *cleandns,
 		return -1;
 	}
 	
-	if (ns_parse(&msg, cleandns->buf, len) == 0) {
+	if (ns_parse(&msg, (uint8_t *)cleandns->buf, len) == 0) {
 		stream_t questions = STREAM_INIT();
 
 		get_questions(&questions, &msg);
@@ -715,7 +715,7 @@ static int handle_remote_sock_recv(cleandns_ctx *cleandns, int len, struct socka
 		return -1;
 	}
 
-	if (ns_parse(&msg, cleandns->buf, len) == 0) {
+	if (ns_parse(&msg, (uint8_t *)cleandns->buf, len) == 0) {
 
 		if (loglevel >= LOG_INFO) {
 			print_response(&msg, from_addr);
