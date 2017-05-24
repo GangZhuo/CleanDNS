@@ -20,6 +20,7 @@ extern "C" {
 typedef struct req_t {
 	uint16_t id;
     uint16_t old_id;
+	char *questions;
     int edns;
 	struct sockaddr_storage addr;
 	socklen_t addrlen;

@@ -214,7 +214,8 @@ static void free_req(req_t *req)
     if (req) {
 		ns_msg_free(req->ns_msg);
 		free(req->ns_msg);
-        free(req);
+		free(req->questions);
+		free(req);
     }
 }
 
@@ -247,6 +248,89 @@ static void queue_remove_bynode(cleandns_ctx *cleandns, rbnode_t *n)
     rbtree_delete(&cleandns->queue, n);
 }
 
+static int get_questions(stream_t *s, ns_msg_t *msg)
+{
+	int i, r, len = 0;
+	for (i = 0; i < msg->qdcount; i++) {
+		r = stream_writef(s, i > 0 ? ", %s" : "%s", msg->qrs[i].qname);
+		if (r < 0)
+			return -1;
+		len += r;
+	}
+	return len;
+}
+
+static int get_answers(stream_t *s, ns_msg_t *msg)
+{
+	int i, rrcount, r, len = 0;
+	ns_rr_t *rr;
+	for (i = 0, rrcount = ns_rrcount(msg); i < rrcount; i++) {
+		rr = msg->rrs + i;
+		if (rr->type == NS_QTYPE_A) {
+			char ipname[INET6_ADDRSTRLEN];
+			struct in_addr *addr = (struct in_addr *)rr->rdata;
+			inet_ntop(AF_INET, addr, ipname, INET6_ADDRSTRLEN);
+			r = stream_writef(s, len > 0 ? ", %s" : "%s", ipname);
+			if (r < 0)
+				return -1;
+			len += r;
+		}
+		else if (rr->type == NS_QTYPE_AAAA) {
+			struct in_addr6 *addr = (struct in_addr6 *)rr->rdata;
+			static char ipname[INET6_ADDRSTRLEN];
+			inet_ntop(AF_INET6, addr, ipname, INET6_ADDRSTRLEN);
+			r = stream_writef(s, len > 0 ? ", %s" : "%s", ipname);
+			if (r < 0)
+				return -1;
+			len += r;
+		}
+		else if (rr->type == NS_QTYPE_PTR) {
+			r = stream_writef(s, len > 0 ? ", %s" : "%s", rr->rdata);
+			if (r < 0)
+				return -1;
+			len += r;
+		}
+		else if (rr->type == NS_QTYPE_CNAME) {
+			/*r = stream_writef(s, len > 0 ? ", cname: %s" : "cname: %s", rr->rdata);
+			if (r < 0)
+				return -1;
+			len += r;*/
+		}
+		else if (rr->type == NS_QTYPE_SOA) {
+			/*ns_soa_t *soa = rr->rdata;
+			r = stream_writef(s, len > 0 ? ", ns1: %s, ns2: %s" : "ns1: %s, ns2: %s", soa->mname, soa->rname);
+			if (r < 0)
+				return -1;
+			len += r;*/
+		}
+		else {
+			/* do nothing */
+		}
+	}
+	return len;
+}
+
+static void print_request(char *questions, struct sockaddr *from_addr)
+{
+	logi("request %s from %s\n", questions,
+		from_addr ? get_addrname(from_addr) : "");
+}
+
+static void print_response(ns_msg_t *msg, struct sockaddr *from_addr)
+{
+	stream_t rq = STREAM_INIT();
+	stream_t rs = STREAM_INIT();
+	get_questions(&rq, msg);
+	get_answers(&rs, msg);
+	logi("recv response %s from %s (%s): %s\n",
+		rq.array,
+		from_addr ? get_addrname(from_addr) : "",
+		(msg->id & 1) ? "foreign" : "china",
+		rs.array);
+	stream_free(&rq);
+	stream_free(&rs);
+}
+
 static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 	int compression, subnet_t *subnet,
 	int sock, struct sockaddr *to, socklen_t tolen)
@@ -274,10 +358,23 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 	}
 
 	if (loglevel >= LOG_INFO) {
-		if (subnet)
+		if (msg->ancount > 0) {
+			stream_t questions = STREAM_INIT();
+			stream_t answers = STREAM_INIT();
+			get_questions(&questions, msg);
+			get_answers(&answers, msg);
+			logi("send msg to '%s': questions=%s, answers=%s\n",
+				get_addrname(to),
+				questions.array,
+				answers.array);
+			stream_free(&questions);
+			stream_free(&answers);
+		}
+		else if (subnet)
 			logi("send msg to '%s' with '%s'\n", get_addrname(to), subnet->name);
-		else
+		else {
 			logi("send msg to '%s'\n", get_addrname(to));
+		}
 	}
 
 	if ((len = ns_serialize(&s, msg, compression)) <= 0) {
@@ -302,27 +399,6 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 	stream_free(&s);
 
 	return 0;
-}
-
-static int get_questions(stream_t *s, ns_msg_t *msg)
-{
-	int i, r, len = 0;
-	for (i = 0; i < msg->qdcount; i++) {
-		r = stream_writef(s, i > 0 ? ", %s" : "%s", msg->qrs[i].qname);
-		if (r < 0)
-			return -1;
-		len += r;
-	}
-	return len;
-}
-
-static void print_request(ns_msg_t *msg, struct sockaddr *from_addr)
-{
-	stream_t s = STREAM_INIT();
-	get_questions(&s, msg);
-	logi("request %s from %s\n", s.array,
-		from_addr ? get_addrname(from_addr) : "");
-	stream_free(&s);
 }
 
 static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, req_t *req)
@@ -380,9 +456,13 @@ static int handle_listen_sock_recv(cleandns_ctx *cleandns,
 	}
 	
 	if (ns_parse(&msg, cleandns->buf, len) == 0) {
+		stream_t questions = STREAM_INIT();
+
+		get_questions(&questions, &msg);
+		req->questions = questions.array;
 
 		if (loglevel >= LOG_INFO) {
-			print_request(&msg, (struct sockaddr *)&req->addr);
+			print_request(req->questions, (struct sockaddr *)&req->addr);
 		}
 
 		req->old_id = msg.id;
@@ -625,70 +705,6 @@ static int handle_remote_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg)
 	return 0;
 }
 
-static int get_answers(stream_t *s, ns_msg_t *msg)
-{
-	int i, rrcount, r, len = 0;
-	ns_rr_t *rr;
-	for (i = 0, rrcount = ns_rrcount(msg); i < rrcount; i++) {
-		rr = msg->rrs + i;
-		if (rr->type == NS_QTYPE_A) {
-			char ipname[INET6_ADDRSTRLEN];
-			struct in_addr *addr = (struct in_addr *)rr->rdata;
-			inet_ntop(AF_INET, addr, ipname, INET6_ADDRSTRLEN);
-			r = stream_writef(s, len > 0 ? ", %s" : "%s", ipname);
-			if (r < 0)
-				return -1;
-			len += r;
-		}
-		else if (rr->type == NS_QTYPE_AAAA) {
-			struct in_addr6 *addr = (struct in_addr6 *)rr->rdata;
-			static char ipname[INET6_ADDRSTRLEN];
-			inet_ntop(AF_INET6, addr, ipname, INET6_ADDRSTRLEN);
-			r = stream_writef(s, len > 0 ? ", %s" : "%s", ipname);
-			if (r < 0)
-				return -1;
-			len += r;
-		}
-		else if(rr->type == NS_QTYPE_PTR) {
-			r = stream_writef(s, len > 0 ? ", hostname: %s" : "hostname: %s", rr->rdata);
-			if (r < 0)
-				return -1;
-			len += r;
-		}
-		else if (rr->type == NS_QTYPE_CNAME) {
-			r = stream_writef(s, len > 0 ? ", cname: %s" : "cname: %s", rr->rdata);
-			if (r < 0)
-				return -1;
-			len += r;
-		}
-		else if (rr->type == NS_QTYPE_SOA) {
-			ns_soa_t *soa = rr->rdata;
-			r = stream_writef(s, len > 0 ? ", ns1: %s, ns2: %s" : "ns1: %s, ns2: %s", soa->mname, soa->rname);
-			if (r < 0)
-				return -1;
-			len += r;
-		}
-		else {
-		}
-	}
-	return len;
-}
-
-static void print_response(ns_msg_t *msg, struct sockaddr *from_addr)
-{
-	stream_t rq = STREAM_INIT();
-	stream_t rs = STREAM_INIT();
-	get_questions(&rq, msg);
-	get_answers(&rs, msg);
-	logi("recv response %s from %s (%s): %s\n",
-		rq.array,
-		from_addr ? get_addrname(from_addr) : "",
-		(msg->id & 1) ? "foreign" : "china",
-		rs.array);
-	stream_free(&rq);
-	stream_free(&rs);
-}
-
 static int handle_remote_sock_recv(cleandns_ctx *cleandns, int len, struct sockaddr *from_addr)
 {
 	ns_msg_t msg;
@@ -795,9 +811,17 @@ static int handle_timeout(cleandns_ctx *cleandns)
 		queue_remove_bynode(cleandns, n);
 
 		if (loglevel >= LOG_INFO) {
-			logi("timeout: id=%u, old_id=%u\n",
-				(unsigned int)(req->id & 0xFFFF),
-				(unsigned int)(req->old_id & 0xFFFF));
+			if (req->ns_msg) {
+				stream_t answers = STREAM_INIT();
+				get_answers(&answers, req->ns_msg);
+				logi("timeout: questions=%s, answers=%s\n",
+					req->questions, answers.array);
+				stream_free(&answers);
+			}
+			else {
+				logi("timeout: questions=%s\n",
+					req->questions);
+			}
 		}
 
 		if (req->ns_msg) {
@@ -1140,6 +1164,10 @@ static int init_cleandns(cleandns_ctx *cleandns)
 
 static void free_cleandns(cleandns_ctx *cleandns)
 {
+	if (cleandns->listen_sock)
+		close(cleandns->listen_sock);
+	if (cleandns->remote_sock)
+		close(cleandns->remote_sock);
 	free(cleandns->listen_addr);
 	free(cleandns->listen_port);
 	free(cleandns->dns_server);
@@ -1148,10 +1176,6 @@ static void free_cleandns(cleandns_ctx *cleandns)
 	free(cleandns->foreign_ip);
 	if (cleandns->dns_server_addr)
 		freeaddrinfo(cleandns->dns_server_addr);
-	if (cleandns->listen_sock)
-		close(cleandns->listen_sock);
-	if (cleandns->remote_sock)
-		close(cleandns->remote_sock);
 	rbtree_free(&cleandns->queue);
 }
 
