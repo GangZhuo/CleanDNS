@@ -44,11 +44,11 @@ Non-polluting DNS. Support ECS (edns-client-subnet).
 
 ### Example
 
-    cleandns -m -s 8.8.8.8 -l 202.108.22.5/24
+    cleandns -m -s 8.8.8.8 -l 202.108.22.5/24 -vvv
     
     or
     
-    cleandns -m -s 8.8.8.8 -l 202.108.22.5/24 -f 172.217.24.4/24
+    cleandns -m -s 8.8.8.8 -l 202.108.22.5/24 -f 172.217.24.4/24 -vvv
 
 Remove "-l" and "-f" to disable "edns-client-subnet".
 
