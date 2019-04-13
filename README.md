@@ -13,21 +13,27 @@ Non-polluting DNS. Support ECS (edns-client-subnet).
 ### Install
 
     git clone https://github.com/GangZhuo/CleanDNS.git
+	
     cd CleanDNS
+	
     make clean
+	
     make
 
 ### Install (OpenWRT)
 
     cd OpenWrt-SDK-***
+	
     git clone https://github.com/GangZhuo/CleanDNS.git package/CleanDNS
-    make menuconfig # Select Network/CleanDNS
-    make V=99 package/CleanDNS/openwrt/compile
+	
+    make menuconfig                            # Select Network/CleanDNS
+	
+    make V=99 package/CleanDNS/openwrt/compile # Output file at OpenWrt-SDK-***/bin/packages/<arch>/base/CleanDNS-*.ipk
     
 	# Install on OpenWrt
     opkg install CleanDNS_*.ipk
 	
-	# Change your config file "/etc/config/cleandns", then restart.
+	# Change your config file '/etc/config/cleandns', then restart '/etc/init.d/cleandns restart'.
 	vim /etc/config/cleandns
 	
 	# Start|Stop|Restart|Enable|Disable
