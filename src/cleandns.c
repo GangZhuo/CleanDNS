@@ -760,13 +760,13 @@ static int handle_remote_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg)
 	flags = check_ns_msg(cleandns, msg);
 	if (flags & FLG_POLLUTE) {
 		if (loglevel >= LOG_INFO) {
-			logi("response_best_nsmsg: drop polluted msg\n");
+			logi("handle_remote_sock_recv_nsmsg: drop polluted msg\n");
 		}
 		return 0;
 	}
 	else if (req->edns && !(flags & FLG_OPT)) {
 		if (loglevel >= LOG_INFO) {
-			logi("response_best_nsmsg: drop msg base on no edns msg\n");
+			logi("handle_remote_sock_recv_nsmsg: drop msg base on no edns msg\n");
 		}
 		return 0;
 	}
