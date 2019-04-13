@@ -24,7 +24,7 @@
 #include "stream.h"
 
 #define CLEANDNS_NAME    "CleanDNS"
-#define CLEANDNS_VERSION "0.2"
+#define CLEANDNS_VERSION "0.3"
 
 #define DEFAULT_DNS_SERVER "8.8.8.8,119.29.29.29"
 #define DEFAULT_LISTEN_ADDR "0.0.0.0"
