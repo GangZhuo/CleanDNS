@@ -629,7 +629,7 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 			flags = check_ns_msg(cleandns, msg);
 			if (flags & FLG_POLLUTE) {
 				if (loglevel >= LOG_INFO) {
-					logi("response_best_nsmsg: drop polluted msg (#%d)\n", i);
+					logi("response_best_nsmsg: polluted msg (#%d)\n", i);
 				}
 				score[i] = -1;
 			}
@@ -737,6 +737,7 @@ static int handle_remote_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg)
 	rbnode_t *reqnode;
 	uint16_t reqid;
 	req_t *req;
+	int flags;
 
 	if (loglevel >= LOG_DEBUG) {
 		logd("response msg:\n");
@@ -755,6 +756,20 @@ static int handle_remote_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg)
 	}
 
 	req = reqnode->info;
+
+	flags = check_ns_msg(cleandns, msg);
+	if (flags & FLG_POLLUTE) {
+		if (loglevel >= LOG_INFO) {
+			logi("response_best_nsmsg: drop polluted msg\n");
+		}
+		return 0;
+	}
+	else if (req->edns && !(flags & FLG_OPT)) {
+		if (loglevel >= LOG_INFO) {
+			logi("response_best_nsmsg: drop msg base on no edns msg\n");
+		}
+		return 0;
+	}
 
 	if (req->ns_msg_num < MAX_NS_MSG) {
 		/* save msg */
