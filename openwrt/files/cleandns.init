@@ -21,6 +21,8 @@ uci_bool()
 
 start()
 {
+    local bind_addr=$(uci_get bind_addr)
+    local bind_port=$(uci_get bind_port)
     local chnroute=$(uci_get chnroute)
     local china_ip=$(uci_get china_ip)
     local foreign_ip=$(uci_get foreign_ip)
@@ -39,10 +41,11 @@ start()
         -l $china_ip \
         -f $foreign_ip \
         -s $dns_server \
-        -p 5353 \
-	$compr \
+        -b $bind_addr \
+        -p $bind_port \
+        $compr \
         --daemon \
-	--pid=$pid_file 
+        --pid=$pid_file 
 
 }
 
