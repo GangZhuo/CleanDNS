@@ -624,7 +624,7 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 		for (i = 0; i < req->ns_msg_num; i++) {
 			msg = req->ns_msg + i;
 			dns = (struct sockaddr_in*)
-				cleandns->dns_server_addr[dns_index(msg->id, cleandns->dns_server_num)];
+				cleandns->dns_server_addr[dns_index(msg->id, cleandns->dns_server_num)]->ai_addr;
 
 			flags = check_ns_msg(cleandns, msg);
 			if (flags & FLG_POLLUTE) {
@@ -688,7 +688,7 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 		best = req->ns_msg + best_index;
 		if (loglevel >= LOG_INFO) {
 			dns = (struct sockaddr*)
-				cleandns->dns_server_addr[dns_index(best->id, cleandns->dns_server_num)];
+				cleandns->dns_server_addr[dns_index(best->id, cleandns->dns_server_num)]->ai_addr;
 			logi("best answers come from '%s'\n",
 				get_addrname(dns));
 		}
