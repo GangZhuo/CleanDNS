@@ -687,10 +687,10 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 		}
 		best = req->ns_msg + best_index;
 		if (loglevel >= LOG_INFO) {
-			dns = (struct sockaddr*)
+			dns = (struct sockaddr_in*)
 				cleandns->dns_server_addr[dns_index(best->id, cleandns->dns_server_num)]->ai_addr;
 			logi("best answers come from '%s'\n",
-				get_addrname(dns));
+				get_addrname((struct sockaddr*)dns));
 		}
 	}
 
