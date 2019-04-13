@@ -22,7 +22,7 @@
 
 #define CLEANDNS_VERSION "0.1"
 
-#define DEFAULT_DNS_SERVER "8.8.8.8"
+#define DEFAULT_DNS_SERVER "8.8.8.8,119.29.29.29"
 #define DEFAULT_LISTEN_ADDR "0.0.0.0"
 #define DEFAULT_LISTEN_PORT "53"
 #define DEFAULT_CHNROUTE_FILE "chnroute.txt"
@@ -38,6 +38,10 @@
 #define FLG_OPT			(1 << 6)
 
 #define MAX(a, b) (((a) < (b)) ? (b) : (a))
+#define fix_reqid(pid, num) ((*pid) = ((*pid) / (2 * (num))) * (num) * 2)
+#define ext_num(msgid, num) ((msgid) - (((msgid) / (2 * num) ) * (num) * 2))
+#define is_foreign(msgid, num) (ext_num((msgid), (num)) >= (num))
+#define dns_index(msgid, num) ((ext_num((msgid), (num)) >= (num)) ? (ext_num((msgid), (num)) - (num)) : (ext_num((msgid), (num))))
 
 typedef struct {
 	time_t now;
@@ -149,6 +153,7 @@ int main(int argc, char **argv)
     logn("foreign ip: %s\n", cleandns.foreign_ip);
     logn("compression: %s\n", cleandns.compression ? "on" : "off");
     logn("timeout: %d\n", cleandns.timeout);
+    logn("loglevel: %d\n", loglevel);
 
 	if (do_loop(&cleandns) != 0)
 		return EXIT_FAILURE;
@@ -212,8 +217,10 @@ static req_t *new_req()
 static void free_req(req_t *req)
 {
     if (req) {
-		ns_msg_free(req->ns_msg);
-		free(req->ns_msg);
+		int i;
+		for (i = 0; i < req->ns_msg_num; i++) {
+			ns_msg_free(req->ns_msg + i);
+		}
 		free(req->questions);
 		free(req);
     }
@@ -225,9 +232,9 @@ static int queue_add(cleandns_ctx *cleandns, req_t *req)
     rbnode_t *n;
 
     do {
-        newid = (uint16_t)(rand() % 0xFFFF);
-        newid &= 0xFE;
-    } while(newid == 0xffff || rbtree_lookup(&cleandns->queue, (int)newid));
+        newid = (uint16_t)(rand() % 0x7FFF);
+		fix_reqid(&newid, cleandns->dns_server_num);
+    } while(newid == 0 || rbtree_lookup(&cleandns->queue, (int)newid));
 
     req->id = newid;
 
@@ -316,7 +323,7 @@ static void print_request(char *questions, struct sockaddr *from_addr)
 		from_addr ? get_addrname(from_addr) : "");
 }
 
-static void print_response(ns_msg_t *msg, struct sockaddr *from_addr)
+static void print_response(cleandns_ctx* cleandns, ns_msg_t *msg, struct sockaddr *from_addr)
 {
 	stream_t rq = STREAM_INIT();
 	stream_t rs = STREAM_INIT();
@@ -325,7 +332,7 @@ static void print_response(ns_msg_t *msg, struct sockaddr *from_addr)
 	logi("recv response %s from %s (%s): %s\n",
 		rq.array,
 		from_addr ? get_addrname(from_addr) : "",
-		(msg->id & 1) ? "foreign" : "china",
+		is_foreign(msg->id, cleandns->dns_server_num) ? "foreign" : "china",
 		rs.array);
 	stream_free(&rq);
 	stream_free(&rs);
@@ -333,7 +340,7 @@ static void print_response(ns_msg_t *msg, struct sockaddr *from_addr)
 
 static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 	int compression, subnet_t *subnet,
-	int sock, struct sockaddr *to, socklen_t tolen)
+	sock_t sock, struct sockaddr *to, socklen_t tolen)
 {
 	stream_t s = STREAM_INIT();
 	int len;
@@ -403,42 +410,60 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 
 static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, req_t *req)
 {
+	int i;
+
 	if (loglevel >= LOG_DEBUG) {
 		logd("request msg:\n");
 		ns_print(msg);
 	}
 
 	if (cleandns->china_ip == NULL && cleandns->foreign_ip == NULL) {
-		msg->id = req->id;
-		if (send_nsmsg(cleandns, msg, cleandns->compression, NULL,
-			cleandns->remote_sock, cleandns->dns_server_addr->ai_addr,
-			cleandns->dns_server_addr->ai_addrlen) != 0) {
-			loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
-			return -1;
+		for (i = 0; i < cleandns->dns_server_num; i++) {
+			msg->id = (uint16_t)(req->id + i);
+			if (send_nsmsg(cleandns, msg, cleandns->compression, NULL,
+				cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
+				cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
+				loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
+			}
+			else {
+				req->wait_num++;
+			}
 		}
+		
 	}
 	else {
 		if (cleandns->china_ip) {
-			msg->id = req->id;
-
-			if (send_nsmsg(cleandns, msg, cleandns->compression, &cleandns->china_net,
-				cleandns->remote_sock, cleandns->dns_server_addr->ai_addr,
-				cleandns->dns_server_addr->ai_addrlen) != 0) {
-				loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
-				return -1;
+			for (i = 0; i < cleandns->dns_server_num; i++) {
+				msg->id = (uint16_t)(req->id + i);
+				if (send_nsmsg(cleandns, msg, cleandns->compression, &cleandns->china_net,
+					cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
+					cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
+					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
+				}
+				else {
+					req->wait_num++;
+				}
 			}
 		}
 
 		if (cleandns->foreign_ip) {
-			msg->id = (req->id | 1);
-
-			if (send_nsmsg(cleandns, msg, cleandns->compression, &cleandns->foreign_net,
-				cleandns->remote_sock, cleandns->dns_server_addr->ai_addr,
-				cleandns->dns_server_addr->ai_addrlen) != 0) {
-				loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'foreign_ip'.\n");
-				return -1;
+			for (i = 0; i < cleandns->dns_server_num; i++) {
+				msg->id = (uint16_t)(req->id + cleandns->dns_server_num + i);
+				if (send_nsmsg(cleandns, msg, cleandns->compression, &cleandns->foreign_net,
+					cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
+					cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
+					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'foreign_ip'.\n");
+				}
+				else {
+					req->wait_num++;
+				}
 			}
 		}
+	}
+
+	if (req->wait_num == 0) {
+		loge("handle_listen_sock_recv_nsmsg: no 'msg' send to dns server.\n");
+		return -1;
 	}
 
 	return 0;
@@ -581,108 +606,109 @@ static int check_ns_msg(cleandns_ctx *cleandns, ns_msg_t *msg)
 	return flags;
 }
 
-static int handle_remote_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg)
+static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 {
-	ns_msg_t *best = NULL;
-	rbnode_t *reqnode;
-	req_t *req;
-	int flags;
+	ns_msg_t* best = NULL;
 
-	if (loglevel >= LOG_DEBUG) {
-		logd("response msg:\n");
-		ns_print(msg);
-	}
-
-	reqnode = rbtree_lookup(&cleandns->queue, msg->id & 0xFFFE);
-	if (reqnode == NULL) {
-		if (loglevel >= LOG_INFO) {
-			logi("handle_remote_sock_recv_nsmsg: skip\n");
-		}
-		return 0;
-	}
-
-	req = reqnode->info;
-
-	flags = check_ns_msg(cleandns, msg);
-	if (flags & FLG_POLLUTE) {
-		if (loglevel >= LOG_INFO) {
-			logi("handle_remote_sock_recv_nsmsg: drop polluted msg\n");
-		}
-		return 0;
-	}
-	else if (req->edns && !(flags & FLG_OPT)) {
-		if (loglevel >= LOG_INFO) {
-			logi("handle_remote_sock_recv_nsmsg: drop no edns msg\n");
-		}
-		return 0;
-	}
-	else if (cleandns->china_ip == NULL || cleandns->foreign_ip == NULL) {
-		best = msg;
+	if (req->ns_msg_num == 0) {
+		loge("%s: resolve failed.\n", req->questions);
+		return -1;
 	}
 	else {
-		/* chose a best msg */
-		int haveip;
-		haveip = (flags & (FLG_A | FLG_AAAA | FLG_A_CHN | FLG_AAAA_CHN));
-		if (haveip) {
-			int chnip, chnloc;
-			chnip = (flags & (FLG_A_CHN | FLG_AAAA_CHN)); /* have chinese ip(s) in result */
-			chnloc = (msg->id & 1) == 0; /* edns-client-subnet with chinese ip */
 
-			if (chnloc) {
-				if (chnip)
-					best = msg;
-				else {
-					if (req->ns_msg)
-						best = req->ns_msg;
-					else {
-						/* do nothing, wait another msg */
-					}
+		int score[MAX_NS_MSG] = { 0 };
+		int i, flags, best_index = 0;
+		ns_msg_t* msg;
+		struct sockaddr_in* dns;
+
+		for (i = 0; i < req->ns_msg_num; i++) {
+			msg = req->ns_msg + i;
+			dns = (struct sockaddr_in*)
+				cleandns->dns_server_addr[dns_index(msg->id, cleandns->dns_server_num)];
+
+			flags = check_ns_msg(cleandns, msg);
+			if (flags & FLG_POLLUTE) {
+				if (loglevel >= LOG_INFO) {
+					logi("response_best_nsmsg: drop polluted msg (#%d)\n", i);
+				}
+				score[i] = -1;
+			}
+			else if (req->edns && !(flags & FLG_OPT)) {
+				if (loglevel >= LOG_INFO) {
+					logi("response_best_nsmsg: no edns msg (#%d)\n", i);
 				}
 			}
 			else {
-				if (chnip) {
-					if (req->ns_msg)
-						best = req->ns_msg;
-					else {
-						/* do nothing, wait another msg */
+				/* chose a best msg */
+				int haveip;
+				haveip = (flags & (FLG_A | FLG_AAAA | FLG_A_CHN | FLG_AAAA_CHN));
+				if (haveip) {
+					int chnip, chnsubnet, chndns;
+					struct in_addr* addr = &dns->sin_addr;
+
+					chnip = (flags & (FLG_A_CHN | FLG_AAAA_CHN)); /* have chinese ip(s) in result */
+					chnsubnet = !is_foreign(msg->id, cleandns->dns_server_num); /* edns-client-subnet with chinese ip */
+					chndns = test_ip_in_list(addr, &cleandns->chnroute_list); /* from china dns server */
+
+					score[i] += 1;
+
+					if (chnip) {
+						if (chnsubnet)
+							score[i] += 10;
+						else
+							score[i] += 5;
+						if (chndns)
+							score[i] += 20;
+						else
+							score[i] += 10;
 					}
+					else {
+						if (chnsubnet)
+							score[i] += 2;
+						else
+							score[i] += 4;
+						if (chndns)
+							score[i] += 5;
+						else
+							score[i] += 10;
+					}
+
 				}
 				else {
-					if (req->ns_msg)
-						best = msg;
-					else {
-						/* do nothing, wait another msg */
-					}
+					score[i] = 0;
 				}
 			}
 		}
-		else {
-			best = msg;
+
+		for (i = 0; i < req->ns_msg_num; i++) {
+			if (score[best_index] < score[i]) {
+				best_index = i;
+			}
 		}
+		best = req->ns_msg + best_index;
 	}
 
 	if (best) {
 		int rc = -1;
 
-		queue_remove_bynode(cleandns, reqnode);
+		best->id = req->old_id;
+		if (!req->edns) {
+			ns_remove_edns(best);
+		}
+		else {
+			/*TODO: restore client ip*/
+		}
 
-		msg->id = req->old_id;
-        if (!req->edns) {
-            ns_remove_edns(msg);
-        }
-        else {
-            /*TODO: restore client ip*/
-        }
-
-		if (send_nsmsg(cleandns, msg, 0, NULL, cleandns->listen_sock,
-			(struct sockaddr *)(&req->addr), req->addrlen) != 0) {
-			loge("handle_remote_sock_recv_nsmsg: Can't send data to '%s'\n",
-				get_addrname((struct sockaddr *)(&req->addr)));
+		if (send_nsmsg(cleandns, best, 0, NULL, cleandns->listen_sock,
+			(struct sockaddr*)(&req->addr), req->addrlen) != 0) {
+			loge("response_best_nsmsg: failed to send answers to '%s'\n",
+				get_addrname((struct sockaddr*)(&req->addr)));
 		}
 		else {
 			if (loglevel >= LOG_INFO) {
-				logi("sent response to '%s'.\n",
-					get_addrname((struct sockaddr *)(&req->addr)));
+				logi("send answers to '%s'\n",
+					req->questions,
+					get_addrname((struct sockaddr*)(&req->addr)));
 			}
 			rc = 0;
 		}
@@ -692,14 +718,50 @@ static int handle_remote_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg)
 		return rc;
 	}
 	else {
-		/* save msg */
-		req->ns_msg = malloc(sizeof(ns_msg_t));
-		if (req->ns_msg == NULL) {
-			loge("handle_remote_sock_recv_nsmsg: alloc\n");
-			return -1;
+		loge("%s: no answer\n", req->questions);
+
+		free_req(req);
+
+		return -1;
+	}
+
+}
+
+static int handle_remote_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg)
+{
+	rbnode_t *reqnode;
+	uint16_t reqid;
+	req_t *req;
+
+	if (loglevel >= LOG_DEBUG) {
+		logd("response msg:\n");
+		ns_print(msg);
+	}
+
+	reqid = msg->id;
+	fix_reqid(&reqid, cleandns->dns_server_num);
+
+	reqnode = rbtree_lookup(&cleandns->queue, reqid);
+	if (reqnode == NULL) {
+		if (loglevel >= LOG_INFO) {
+			logi("handle_remote_sock_recv_nsmsg: skip\n");
 		}
-		memcpy(req->ns_msg, msg, sizeof(ns_msg_t));
-		memset(msg, 0, sizeof(ns_msg_t)); /* clear, so no free copied files when do 'ns_msg_free(msg)' */
+		return 0;
+	}
+
+	req = reqnode->info;
+
+	if (req->ns_msg_num < MAX_NS_MSG) {
+		/* save msg */
+		memcpy(req->ns_msg + (req->ns_msg_num++), msg, sizeof(ns_msg_t));
+
+		/* clear, so there do not free the copied files when 'ns_msg_free(msg)' */
+		memset(msg, 0, sizeof(ns_msg_t));
+	}
+
+	if (req->ns_msg_num >= req->wait_num) {
+		queue_remove_bynode(cleandns, reqnode);
+		return response_best_nsmsg(cleandns, req);
 	}
 
 	return 0;
@@ -718,7 +780,7 @@ static int handle_remote_sock_recv(cleandns_ctx *cleandns, int len, struct socka
 	if (ns_parse(&msg, (uint8_t *)cleandns->buf, len) == 0) {
 
 		if (loglevel >= LOG_INFO) {
-			print_response(&msg, from_addr);
+			print_response(cleandns, &msg, from_addr);
 		}
 
 		if (handle_remote_sock_recv_nsmsg(cleandns, &msg) == 0) {
@@ -789,7 +851,6 @@ static int handle_timeout(cleandns_ctx *cleandns)
 	rbnode_list_item_t *item;
 	rbnode_t *n;
 	req_t *req;
-	ns_msg_t *msg;
 
 	ctx.cleandns = cleandns;
 	ctx.now = time(NULL);
@@ -811,42 +872,12 @@ static int handle_timeout(cleandns_ctx *cleandns)
 		queue_remove_bynode(cleandns, n);
 
 		if (loglevel >= LOG_INFO) {
-			if (req->ns_msg) {
-				stream_t answers = STREAM_INIT();
-				get_answers(&answers, req->ns_msg);
-				logi("timeout: questions=%s, answers=%s\n",
-					req->questions, answers.array);
-				stream_free(&answers);
-			}
-			else {
-				logi("timeout: questions=%s\n",
-					req->questions);
-			}
+			logi("timeout: questions=%s\n",
+				req->questions);
 		}
 
-		if (req->ns_msg) {
-			msg = req->ns_msg;
-			msg->id = req->old_id;
-            if (!req->edns) {
-                ns_remove_edns(msg);
-            }
-            else {
-                /*TODO: restore client ip*/
-            }
-            if (send_nsmsg(cleandns, msg, 0, NULL, cleandns->listen_sock,
-                        (struct sockaddr *)(&req->addr), req->addrlen) != 0) {
-                loge("handle_timeout: Can't send data to '%s'\n",
-                        get_addrname((struct sockaddr *)(&req->addr)));
-            }
-            else {
-                if (loglevel >= LOG_INFO) {
-                    logi("sent response to '%s' (timeout).\n",
-                            get_addrname((struct sockaddr *)(&req->addr)));
-                }
-            }
-        }
+		response_best_nsmsg(cleandns, req);
 
-		free_req(req);
 	}
 
 	rbnode_list_destroy(ctx.expired_nodes);
@@ -854,7 +885,7 @@ static int handle_timeout(cleandns_ctx *cleandns)
 	return 0;
 }
 
-static int setnonblock(int sock)
+static int setnonblock(sock_t sock)
 {
 #ifdef WINDOWS
 	int iResult;
@@ -918,26 +949,42 @@ static int init_sockets(cleandns_ctx *cleandns)
 static int resolve_dns_server(cleandns_ctx *cleandns)
 {
 	struct addrinfo hints;
-	char buf[32];
-	char *port;
+	char *s, *ip, *port, *p;
 	int r;
 
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_DGRAM;
+	s = strdup(cleandns->dns_server);
 
-	strcpy(buf, cleandns->dns_server);
-	port = strrchr(buf, ':');
-	if (port) {
-		*port = '\0';
-		port++;
-	}
-	else {
-		port = "53";
+	for (p = strtok(s, ",");
+		p && *p && cleandns->dns_server_num < MAX_DNS_SERVER;
+		p = strtok(NULL, ",")) {
+
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = AF_INET;
+		hints.ai_socktype = SOCK_DGRAM;
+
+		ip = p;
+		port = strrchr(p, ':');
+		if (port) {
+			*port = '\0';
+			port++;
+		}
+		else {
+			port = "53";
+		}
+
+		if ((r = getaddrinfo(ip, port, &hints,
+				cleandns->dns_server_addr + cleandns->dns_server_num)) != 0) {
+			loge("%s: %s:%s\n", gai_strerror(r), ip, port);
+			free(s);
+			return -1;
+		}
+		cleandns->dns_server_num++;
 	}
 
-	if ((r = getaddrinfo(buf, port, &hints, &cleandns->dns_server_addr)) != 0) {
-		loge("%s:%s\n", gai_strerror(r), cleandns->dns_server);
+	free(s);
+
+	if (cleandns->dns_server_num == 0) {
+		loge("no dns server\n");
 		return -1;
 	}
 	
@@ -1164,6 +1211,7 @@ static int init_cleandns(cleandns_ctx *cleandns)
 
 static void free_cleandns(cleandns_ctx *cleandns)
 {
+	int i;
 	if (cleandns->listen_sock)
 		close(cleandns->listen_sock);
 	if (cleandns->remote_sock)
@@ -1174,8 +1222,11 @@ static void free_cleandns(cleandns_ctx *cleandns)
 	free(cleandns->chnroute_file);
 	free(cleandns->china_ip);
 	free(cleandns->foreign_ip);
-	if (cleandns->dns_server_addr)
-		freeaddrinfo(cleandns->dns_server_addr);
+	
+	for (i = 0; i < cleandns->dns_server_num; i++) {
+		freeaddrinfo(cleandns->dns_server_addr[i]);
+	}
+
 	rbtree_free(&cleandns->queue);
 }
 

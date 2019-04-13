@@ -3,15 +3,21 @@
 
 #ifdef WINDOWS
 #include "../windows/win.h"
+typedef SOCKET sock_t;
 #else
 #include <time.h>
 #include <netinet/in.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+typedef int sock_t;
 #endif
+
+#define MAX_DNS_SERVER 8
+#define MAX_NS_MSG (MAX_DNS_SERVER * 2)
 
 #include "rbtree.h"
 #include "ns_msg.h"
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,7 +31,9 @@ typedef struct req_t {
 	struct sockaddr_storage addr;
 	socklen_t addrlen;
 	time_t expire;
-	ns_msg_t *ns_msg;
+	ns_msg_t ns_msg[MAX_NS_MSG];
+	int ns_msg_num;
+	int wait_num;
 } req_t;
 
 typedef struct subnet_t {
@@ -54,11 +62,12 @@ typedef struct cleandns_ctx {
 	int compression;
 	int timeout;
 	net_list_t chnroute_list;
-	struct addrinfo *dns_server_addr;
+	struct addrinfo *dns_server_addr[MAX_DNS_SERVER];
+	int dns_server_num;
 	subnet_t china_net;
 	subnet_t foreign_net;
-	int listen_sock;
-	int remote_sock;
+	sock_t listen_sock;
+	sock_t remote_sock;
 	char buf[NS_PAYLOAD_SIZE];
 	rbtree_t queue;
 } cleandns_ctx;
