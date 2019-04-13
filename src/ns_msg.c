@@ -624,7 +624,7 @@ ns_rr_t *ns_add_edns(ns_msg_t *msg)
 {
     ns_rr_t *rr, *rrs;
 
-    rrs = realloc(msg->rrs, (ns_rrcount(msg) + 1) * sizeof(ns_rr_t));
+    rrs = realloc(msg->rrs, ((int)ns_rrcount(msg) + 1) * sizeof(ns_rr_t));
     if (rrs == NULL) {
         loge("ns_add_edns: alloc\n");
         return NULL;
