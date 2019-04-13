@@ -14,7 +14,7 @@
 extern "C" {
 #endif
 
-#define NS_PAYLOAD_SIZE		512
+#define NS_PAYLOAD_SIZE		1024
 #define NS_LABEL_SIZE		63
 #define NS_NAME_SIZE		255
 #define NS_QNAME_SIZE		NS_NAME_SIZE
