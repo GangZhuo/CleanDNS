@@ -20,7 +20,7 @@
 #include "ns_msg.h"
 #include "stream.h"
 
-#define CLEANDNS_VERSION "0.1"
+#define CLEANDNS_VERSION "0.2"
 
 #define DEFAULT_DNS_SERVER "8.8.8.8,119.29.29.29"
 #define DEFAULT_LISTEN_ADDR "0.0.0.0"
