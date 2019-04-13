@@ -1283,7 +1283,7 @@ Forward DNS requests.\n\
   -b BIND_ADDR        address that listens, default: " DEFAULT_LISTEN_ADDR ".\n\
   -p BIND_PORT        port that listens, default: " DEFAULT_LISTEN_PORT ".\n\
   -s DNS              DNS server to use, default: " DEFAULT_DNS_SERVER ".\n\
-  -m                  use DNS compression pointer mutation, only avalidate on china dns server.\n\
+  -m                  use DNS compression pointer mutation, only avalidate on foreign dns server.\n\
   -t                  timeout, default: " DEFAULT_TIMEOUT ".\n\
   -v                  verbose logging.\n\
   -h                  show this help message and exit.\n\

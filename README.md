@@ -36,7 +36,7 @@ Non-polluting DNS. Support ECS (edns-client-subnet).
     -b BIND_ADDR        address that listens, default: 0.0.0.0.
     -p BIND_PORT        port that listens, default: 53.
     -s DNS              DNS server to use, default: 8.8.8.8:53,119.29.29.29:53.
-    -m                  use DNS compression pointer mutation, only avalidate on china dns server.
+    -m                  use DNS compression pointer mutation, only avalidate on foreign dns server.
     -t                  timeout, default: 6.
     -v                  verbose logging.
     -h                  show this help message and exit.
