@@ -37,7 +37,9 @@ Non-polluting DNS. Support ECS (edns-client-subnet).
     -p BIND_PORT        port that listens, default: 53.
     -s DNS              DNS server to use, default: 8.8.8.8:53,119.29.29.29:53.
     -m                  use DNS compression pointer mutation, only avalidate on foreign dns server.
-    -t                  timeout, default: 6.
+    -t                  timeout, default: 5.
+    --daemon            daemonize.
+    --pid=PID_FILE_PATH pid file, default: /var/tmp/CleanDNS.pid.
     -v                  verbose logging.
     -h                  show this help message and exit.
     -V                  print version and exit.
