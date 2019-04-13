@@ -23,7 +23,16 @@ Non-polluting DNS. Support ECS (edns-client-subnet).
     git clone https://github.com/GangZhuo/CleanDNS.git package/CleanDNS
     make menuconfig # Select Network/CleanDNS
     make V=99 package/CleanDNS/openwrt/compile
-
+    
+	# Install on OpenWrt
+    opkg install CleanDNS_*.ipk
+	
+	# Change your config file "/etc/config/cleandns", then restart.
+	vim /etc/config/cleandns
+	
+	# Start|Stop|Restart|Enable|Disable
+	/etc/init.d/cleandns [start|stop|restart|enable|disable]
+	
 	
 ### Usage
     usage: cleandns [-h] [-l CHINA_IP] [-f FOREIGN_IP] [-b BIND_ADDR]
