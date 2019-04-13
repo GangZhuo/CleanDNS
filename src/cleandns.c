@@ -185,7 +185,23 @@ int main(int argc, char **argv)
     logn("foreign ip: %s\n", cleandns.foreign_ip);
     logn("compression: %s\n", cleandns.compression ? "on" : "off");
     logn("timeout: %d\n", cleandns.timeout);
-    logn("loglevel: %d\n", loglevel);
+	logn("loglevel: %d\n", loglevel);
+	if (cleandns.daemonize) {
+		logn("pid file: %s\n", cleandns.pid_file);
+	}
+
+	if (loglevel >= LOG_INFO && cleandns.compression) {
+		int i;
+		struct sockaddr_in* dns_addr;
+		logi("\n");
+		for (i = 0; i < cleandns.dns_server_num; i++) {
+			dns_addr = (struct sockaddr_in*) cleandns.dns_server_addr[i]->ai_addr;
+			logi("compression %s on %s\n",
+				cleandns.dns_server_cmp[i] ? "enabled" : "disabled",
+				get_addrname((struct sockaddr*)dns_addr));
+		}
+		logi("\n");
+	}
 
 	if (do_loop(&cleandns) != 0)
 		return EXIT_FAILURE;
