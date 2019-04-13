@@ -1269,23 +1269,25 @@ static void free_cleandns(cleandns_ctx *cleandns)
 static void usage()
 {
   printf("%s\n", "\
+\n\
+CleanDNS " CLEANDNS_VERSION "\n\
+\n\
 usage: cleandns [-h] [-l CHINA_IP] [-f FOREIGN_IP] [-b BIND_ADDR]\n\
        [-p BIND_PORT] [-c CHNROUTE_FILE] [-s DNS] [-m] [-v] [-V]\n\
+\n\
 Forward DNS requests.\n\
 \n\
-  -l CHINA_IP         china ip address, e.g. 114.114.114.114/24\n\
-  -f FOREIGN_IP       foreign ip address, e.g. 8.8.8.8/24\n\
-  -c CHNROUTE_FILE    path to china route file, default:\n\
-                      " DEFAULT_CHNROUTE_FILE "\n\
-  -b BIND_ADDR        address that listens, default: " DEFAULT_LISTEN_ADDR "\n\
-  -p BIND_PORT        port that listens, default: " DEFAULT_LISTEN_PORT "\n\
-  -s DNS              DNS server to use, default:\n\
-                      " DEFAULT_DNS_SERVER "\n\
-  -m                  use DNS compression pointer mutation\n\
-  -t                  timeout, default: " DEFAULT_TIMEOUT "\n\
-  -v                  verbose logging\n\
-  -h                  show this help message and exit\n\
-  -V                  print version and exit\n\
+  -l CHINA_IP         china ip address, e.g. 114.114.114.114/24.\n\
+  -f FOREIGN_IP       foreign ip address, e.g. 8.8.8.8/24.\n\
+  -c CHNROUTE_FILE    path to china route file, default: " DEFAULT_CHNROUTE_FILE ".\n\
+  -b BIND_ADDR        address that listens, default: " DEFAULT_LISTEN_ADDR ".\n\
+  -p BIND_PORT        port that listens, default: " DEFAULT_LISTEN_PORT ".\n\
+  -s DNS              DNS server to use, default: " DEFAULT_DNS_SERVER ".\n\
+  -m                  use DNS compression pointer mutation, only avalidate on china dns server.\n\
+  -t                  timeout, default: " DEFAULT_TIMEOUT ".\n\
+  -v                  verbose logging.\n\
+  -h                  show this help message and exit.\n\
+  -V                  print version and exit.\n\
 \n\
 Online help: <https://github.com/GangZhuo/CleanDNS>\n");
 }
