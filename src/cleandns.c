@@ -30,7 +30,7 @@
 #define DEFAULT_LISTEN_ADDR "0.0.0.0"
 #define DEFAULT_LISTEN_PORT "53"
 #define DEFAULT_CHNROUTE_FILE "chnroute.txt"
-#define DEFAULT_TIMEOUT "6"
+#define DEFAULT_TIMEOUT "5"
 #define DEFAULT_PID_FILE "/var/tmp/"CLEANDNS_NAME".pid"
 
 #define FLG_NONE		0
