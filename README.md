@@ -30,17 +30,17 @@ Non-polluting DNS. Support ECS (edns-client-subnet).
         [-p BIND_PORT] [-c CHNROUTE_FILE] [-s DNS] [-m] [-v] [-V]
     Forward DNS requests.
     
-    -l CHINA_IP         china ip address, e.g. 114.114.114.114/24
-    -f FOREIGN_IP       foreign ip address, e.g. 8.8.8.8/24
-    -c CHNROUTE_FILE    path to china route file, default: chnroute.txt
-    -b BIND_ADDR        address that listens, default: 0.0.0.0
-    -p BIND_PORT        port that listens, default: 53
-    -s DNS              DNS server to use, default: 8.8.8.8:53
-    -m                  use DNS compression pointer mutation
-    -t                  timeout, default: 6
-    -v                  verbose logging
-    -h                  show this help message and exit
-    -V                  print version and exit
+    -l CHINA_IP         china ip address, e.g. 114.114.114.114/24.
+    -f FOREIGN_IP       foreign ip address, e.g. 8.8.8.8/24.
+    -c CHNROUTE_FILE    path to china route file, default: chnroute.txt.
+    -b BIND_ADDR        address that listens, default: 0.0.0.0.
+    -p BIND_PORT        port that listens, default: 53.
+    -s DNS              DNS server to use, default: 8.8.8.8:53,119.29.29.29:53.
+    -m                  use DNS compression pointer mutation, only avalidate on china dns server.
+    -t                  timeout, default: 6.
+    -v                  verbose logging.
+    -h                  show this help message and exit.
+    -V                  print version and exit.
 
 ### Example
 
