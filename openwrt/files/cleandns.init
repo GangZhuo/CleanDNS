@@ -1,0 +1,62 @@
+#!/bin/sh /etc/rc.common
+# cleandns init script
+
+START=90
+STOP=15
+
+NAME=cleandns
+
+uci_get()
+{
+    local ret=$(uci get $NAME.@cfg[0].$1 2>/dev/null)
+    echo ${ret}
+}
+
+uci_bool()
+{
+    case "$(uci_get $1)" in
+        1|on|true|yes|enabled) echo "-m";;
+    esac
+}
+
+start()
+{
+    local chnroute=$(uci_get chnroute)
+    local china_ip=$(uci_get china_ip)
+    local foreign_ip=$(uci_get foreign_ip)
+    local dns_server=$(uci_get dns_server)
+    local compr=$(uci_bool compression)
+    local pid_file=$(uci_get pid_file)
+
+    if [ -f $pid_file ]
+        then
+            echo "already started: $pid_file exists"
+            exit 1
+    fi
+
+    cleandns \
+        -c $chnroute \
+        -l $china_ip \
+        -f $foreign_ip \
+        -s $dns_server \
+        -p 5353 \
+	$compr \
+        --daemon \
+	--pid=$pid_file 
+
+}
+
+stop()
+{
+    local pid_file=$(uci_get pid_file)
+
+    kill `cat $pid_file 2>/dev/null` 2>/dev/null
+    rm $pid_file 2>/dev/null
+}
+
+restart()
+{
+    stop
+    start
+}
+

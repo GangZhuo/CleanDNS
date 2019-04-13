@@ -31,7 +31,18 @@ define Build/Prepare
 	cp -r ../* $(PKG_BUILD_DIR)
 endef
 
+define Package/CleanDNS/conffiles
+/etc/cleandns_chnroute.txt
+/etc/config/cleandns
+endef
+
 define Package/CleanDNS/install
+	$(INSTALL_DIR) $(1)/etc
+	$(INSTALL_CONF) $(PKG_BUILD_DIR)/chnroute.txt $(1)/etc/cleandns_chnroute.txt
+	$(INSTALL_DIR) $(1)/etc/config
+	$(INSTALL_CONF) $(PKG_BUILD_DIR)/openwrt/files/cleandns.config $(1)/etc/config/cleandns
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/openwrt/files/cleandns.init $(1)/etc/init.d/cleandns
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/cleandns $(1)/usr/bin
 endef
