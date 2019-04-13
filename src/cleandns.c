@@ -123,13 +123,29 @@ int main(int argc, char **argv)
 		cleandns.foreign_net.name = cleandns.foreign_ip;
 	}
 
-	if (cleandns.china_ip && cleandns.foreign_ip) {
-		if (parse_chnroute(&cleandns) != 0)
-			return EXIT_FAILURE;
-	}
+	if (parse_chnroute(&cleandns) != 0)
+		return EXIT_FAILURE;
 
 	if (resolve_dns_server(&cleandns) != 0)
 		return EXIT_FAILURE;
+
+	if (cleandns.compression) {
+		int i;
+		struct sockaddr_in* dns_addr;
+		struct in_addr* dns_ip;
+		for (i = 0; i < cleandns.dns_server_num; i++) {
+			dns_addr = (struct sockaddr_in*)
+				cleandns.dns_server_addr[i]->ai_addr;
+			dns_ip = (struct in_addr*)&dns_addr->sin_addr;
+			/* only foreign dns server need compression*/
+			if (!test_ip_in_list(dns_ip, &cleandns.chnroute_list)) {
+				cleandns.dns_server_cmp[i] = 1;
+			}
+			else {
+				cleandns.dns_server_cmp[i] = 0;
+			}
+		}
+	}
 
 	if (init_sockets(&cleandns) != 0)
 		return EXIT_FAILURE;
@@ -420,7 +436,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 	if (cleandns->china_ip == NULL && cleandns->foreign_ip == NULL) {
 		for (i = 0; i < cleandns->dns_server_num; i++) {
 			msg->id = (uint16_t)(req->id + i);
-			if (send_nsmsg(cleandns, msg, cleandns->compression, NULL,
+			if (send_nsmsg(cleandns, msg, cleandns->dns_server_cmp[i], NULL,
 				cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
 				cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
 				loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
@@ -435,7 +451,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 		if (cleandns->china_ip) {
 			for (i = 0; i < cleandns->dns_server_num; i++) {
 				msg->id = (uint16_t)(req->id + i);
-				if (send_nsmsg(cleandns, msg, cleandns->compression, &cleandns->china_net,
+				if (send_nsmsg(cleandns, msg, cleandns->dns_server_cmp[i], &cleandns->china_net,
 					cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
 					cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
@@ -449,7 +465,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 		if (cleandns->foreign_ip) {
 			for (i = 0; i < cleandns->dns_server_num; i++) {
 				msg->id = (uint16_t)(req->id + cleandns->dns_server_num + i);
-				if (send_nsmsg(cleandns, msg, cleandns->compression, &cleandns->foreign_net,
+				if (send_nsmsg(cleandns, msg, cleandns->dns_server_cmp[i], &cleandns->foreign_net,
 					cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
 					cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'foreign_ip'.\n");
