@@ -707,7 +707,6 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 		else {
 			if (loglevel >= LOG_INFO) {
 				logi("send answers to '%s'\n",
-					req->questions,
 					get_addrname((struct sockaddr*)(&req->addr)));
 			}
 			rc = 0;
