@@ -6,8 +6,8 @@
 
 #define LOG_TIMEFORMAT "%Y-%m-%d %H:%M:%S"
 
-static void log_vprintf(int mask, const char *fmt, va_list args);
-static void log_vprintf_with_timestamp(int mask, const char *fmt, va_list args);
+log_vprintf_fun log_vprintf = log_default_vprintf;
+log_vprintf_fun log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
 
 static int s_log_level = LOG_NOTICE;
 static int s_log_flags = LOG_FLG_TIME;
@@ -62,14 +62,14 @@ static FILE *log_fp(int mask)
 	return pf;
 }
 
-static void log_vprintf(int mask, const char *fmt, va_list args)
+void log_default_vprintf(int mask, const char *fmt, va_list args)
 {
 	FILE *pf = log_fp(mask);
 	vfprintf(pf, fmt, args);
 	fflush(pf);
 }
 
-static void log_vprintf_with_timestamp(int mask, const char *fmt, va_list args)
+void log_default_vprintf_with_timestamp(int mask, const char *fmt, va_list args)
 {
 	char buf[640];
 	int level = log_level_comp(mask);

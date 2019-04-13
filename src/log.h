@@ -8,6 +8,7 @@
 extern "C" {
 #endif
 
+/* priorities (same syslog.h) */
 #define	LOG_EMERG		0	/* system is unusable */
 #define	LOG_ALERT		1	/* action must be taken immediately */
 #define	LOG_CRIT		2	/* critical conditions */
@@ -21,10 +22,18 @@ extern "C" {
 
 #define LOG_MASK_RAW	(1 << 8) /* log raw message */
 
+typedef void (*log_vprintf_fun)(int mask, const char* fmt, va_list args);
+
+extern log_vprintf_fun log_vprintf;
+extern log_vprintf_fun log_vprintf_with_timestamp;
+
 int *log_pflags();
 int *log_plevel();
+
 void log_write(int mask, const char *fmt, ...);
 void log_vwrite(int mask, const char *fmt, va_list args);
+void log_default_vprintf(int mask, const char* fmt, va_list args);
+void log_default_vprintf_with_timestamp(int mask, const char* fmt, va_list args);
 
 #define loglevel (*(log_plevel()))
 #define logflags (*(log_pflags()))

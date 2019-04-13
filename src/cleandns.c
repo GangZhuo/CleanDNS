@@ -12,6 +12,9 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <syslog.h>
 #endif
 
 
@@ -20,6 +23,7 @@
 #include "ns_msg.h"
 #include "stream.h"
 
+#define CLEANDNS_NAME    "CleanDNS"
 #define CLEANDNS_VERSION "0.2"
 
 #define DEFAULT_DNS_SERVER "8.8.8.8,119.29.29.29"
@@ -27,6 +31,7 @@
 #define DEFAULT_LISTEN_PORT "53"
 #define DEFAULT_CHNROUTE_FILE "chnroute.txt"
 #define DEFAULT_TIMEOUT "6"
+#define DEFAULT_PID_FILE "/var/tmp/"CLEANDNS_NAME".pid"
 
 #define FLG_NONE		0
 #define FLG_POLLUTE		1
@@ -50,6 +55,7 @@ typedef struct {
 } timeout_handler_ctx;
 
 static int running = 0;
+static int is_use_syslog = 0;
 
 static void usage();
 static int init_cleandns(cleandns_ctx *cleandns);
@@ -65,6 +71,9 @@ static int handle_remote_sock(cleandns_ctx *cleandns);
 static int handle_timeout(cleandns_ctx *cleandns);
 static char *get_addrname(struct sockaddr *addr);
 static int parse_netmask(net_mask_t *netmask, char *line);
+static void run_as_daemonize(cleandns_ctx* cleandns);
+static void open_syslog();
+static void close_syslog();
 
 #ifdef WINDOWS
 BOOL WINAPI sig_handler(DWORD signo)
@@ -162,6 +171,13 @@ int main(int argc, char **argv)
 	signal(SIGTERM, sig_handler);
 #endif
 
+	if (cleandns.daemonize) {
+		if (!cleandns.pid_file) {
+			cleandns.pid_file = strdup(DEFAULT_PID_FILE);
+		}
+		run_as_daemonize(&cleandns);
+	}
+
     logn("listen on %s:%s\n", cleandns.listen_addr, cleandns.listen_port);
     logn("dns server: %s\n", cleandns.dns_server);
     logn("chnroute: %s\n", cleandns.chnroute_file);
@@ -175,6 +191,10 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 
 	free_cleandns(&cleandns);
+
+	if (is_use_syslog) {
+		close_syslog();
+	}
 
     return EXIT_SUCCESS;
 }
@@ -1164,27 +1184,47 @@ static int parse_chnroute(cleandns_ctx *cleandns)
 static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 {
 	int ch;
-	while ((ch = getopt(argc, argv, "hb:p:s:c:l:f:t:mvV")) != -1) {
+	int option_index = 0;
+	static struct option long_options[] = {
+		{"daemon", no_argument,       NULL, 1},
+		{"pid",    required_argument, NULL, 2},
+		{0, 0, 0, 0}
+	};
+
+	while ((ch = getopt_long(argc, argv, "hb:p:s:c:l:f:t:mvV", long_options, &option_index)) != -1) {
 		switch (ch) {
+		case 1:
+			cleandns->daemonize = 1;
+			break;
+		case 2:
+			if (cleandns->pid_file) free(cleandns->pid_file);
+			cleandns->pid_file = strdup(optarg);
+			break;
 		case 'h':
 			usage();
 			exit(0);
 		case 'b':
+			if (cleandns->listen_addr) free(cleandns->listen_addr);
 			cleandns->listen_addr = strdup(optarg);
 			break;
 		case 'p':
+			if (cleandns->listen_port) free(cleandns->listen_port);
 			cleandns->listen_port = strdup(optarg);
 			break;
 		case 's':
+			if (cleandns->dns_server) free(cleandns->dns_server);
 			cleandns->dns_server = strdup(optarg);
 			break;
 		case 'c':
+			if (cleandns->chnroute_file) free(cleandns->chnroute_file);
 			cleandns->chnroute_file = strdup(optarg);
 			break;
 		case 'l':
+			if (cleandns->china_ip) free(cleandns->china_ip);
 			cleandns->china_ip = strdup(optarg);
 			break;
 		case 'f':
+			if (cleandns->foreign_ip) free(cleandns->foreign_ip);
 			cleandns->foreign_ip = strdup(optarg);
 			break;
 		case 'm':
@@ -1197,7 +1237,7 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 			loglevel++;
 			break;
 		case 'V':
-			printf("CleanDNS %s\n", CLEANDNS_VERSION);
+			printf(CLEANDNS_NAME " %s\n", CLEANDNS_VERSION);
 			exit(0);
 		default:
 			usage();
@@ -1248,6 +1288,10 @@ static int init_cleandns(cleandns_ctx *cleandns)
 static void free_cleandns(cleandns_ctx *cleandns)
 {
 	int i;
+
+	if (cleandns == NULL)
+		return;
+
 	if (cleandns->listen_sock)
 		close(cleandns->listen_sock);
 	if (cleandns->remote_sock)
@@ -1258,7 +1302,8 @@ static void free_cleandns(cleandns_ctx *cleandns)
 	free(cleandns->chnroute_file);
 	free(cleandns->china_ip);
 	free(cleandns->foreign_ip);
-	
+	free(cleandns->pid_file);
+
 	for (i = 0; i < cleandns->dns_server_num; i++) {
 		freeaddrinfo(cleandns->dns_server_addr[i]);
 	}
@@ -1268,9 +1313,8 @@ static void free_cleandns(cleandns_ctx *cleandns)
 
 static void usage()
 {
-  printf("%s\n", "\
-\n\
-CleanDNS " CLEANDNS_VERSION "\n\
+  printf("%s\n", "\n"
+CLEANDNS_NAME " " CLEANDNS_VERSION "\n\
 \n\
 usage: cleandns [-h] [-l CHINA_IP] [-f FOREIGN_IP] [-b BIND_ADDR]\n\
        [-p BIND_PORT] [-c CHNROUTE_FILE] [-s DNS] [-m] [-v] [-V]\n\
@@ -1285,9 +1329,111 @@ Forward DNS requests.\n\
   -s DNS              DNS server to use, default: " DEFAULT_DNS_SERVER ".\n\
   -m                  use DNS compression pointer mutation, only avalidate on foreign dns server.\n\
   -t                  timeout, default: " DEFAULT_TIMEOUT ".\n\
+  --daemon            daemonize.\n\
+  --pid=PID_FILE_PATH pid file, default: " DEFAULT_PID_FILE ".\n\
   -v                  verbose logging.\n\
   -h                  show this help message and exit.\n\
   -V                  print version and exit.\n\
 \n\
 Online help: <https://github.com/GangZhuo/CleanDNS>\n");
+}
+
+static void syslog_vprintf(int mask, const char* fmt, va_list args)
+{
+#ifdef WINDOWS
+	loge("syslog_vprintf(): not implemented in Windows port");
+	exit(1);
+#else
+	char buf[640];
+	int priority = log_level_comp(mask);
+
+	memset(buf, 0, sizeof(buf));
+	vsnprintf(buf, sizeof(buf) - 1, fmt, args);
+
+	syslog(priority, "%s", buf);
+#endif
+}
+
+static void open_syslog()
+{
+#ifdef WINDOWS
+	loge("use_syslog(): not implemented in Windows port");
+	exit(1);
+#else
+	openlog(CLEANDNS_NAME, LOG_CONS | LOG_PID, LOG_DAEMON);
+	is_use_syslog = 1;
+	log_vprintf = syslog_vprintf;
+	log_vprintf_with_timestamp = syslog_vprintf;
+#endif
+}
+
+static void close_syslog()
+{
+#ifdef WINDOWS
+	loge("close_syslog(): not implemented in Windows port");
+	exit(1);
+#else
+	if (is_use_syslog) {
+		is_use_syslog = 0;
+		log_vprintf = log_default_vprintf;
+		log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
+		closelog();
+	}
+#endif
+}
+
+static void run_as_daemonize(cleandns_ctx* cleandns)
+{
+#ifdef WINDOWS
+	loge("run_as_daemonize(): not implemented in Windows port");
+	exit(1);
+#else
+	pid_t pid, sid;
+	int dev_null;
+
+	pid = fork();
+	if (pid < 0) {
+		exit(1);
+	}
+
+	if (pid > 0) {
+		if (cleandns->pid_file) {
+			FILE* file = fopen(cleandns->pid_file, "w");
+			if (file == NULL) {
+				logc("Invalid pid file: %s\n", cleandns->pid_file);
+				exit(1);
+			}
+			fprintf(file, "%d", (int)pid);
+			fclose(file);
+		}
+		
+		exit(0);
+	}
+
+	umask(0);
+
+	open_syslog();
+
+	sid = setsid();
+	if (sid < 0) {
+		exit(1);
+	}
+
+	if ((chdir("/")) < 0) {
+		exit(1);
+	}
+
+	dev_null = open("/dev/null", O_WRONLY);
+	if (dev_null) {
+		dup2(dev_null, STDOUT_FILENO);
+		dup2(dev_null, STDERR_FILENO);
+	}
+	else {
+		close(STDOUT_FILENO);
+		close(STDERR_FILENO);
+	}
+
+	close(STDIN_FILENO);
+
+#endif
 }
