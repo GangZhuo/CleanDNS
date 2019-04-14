@@ -10,10 +10,10 @@
 #include "ns_msg.h"
 #include "log.h"
 
-typedef struct edns_optinfo {
+typedef struct opt_rdata_into {
 	int count; /* number of option(s) */
 	int size; /* total size of option data */
-} edns_optinfo;
+} opt_rdata_into;
 
 typedef struct str_t {
 	char *s;
@@ -98,18 +98,18 @@ static void ns_free_opt(ns_opt_t *opt)
     }
 }
 
-static void ns_rdata_free_edns(ns_rr_t *rr)
+static void ns_rdata_free_opts(ns_rr_t *rr)
 {
-    ns_edns_t *edns = rr->rdata;
+	ns_optlist_t *opts = rr->rdata;
     ns_opt_t *opt;
     
-    if (edns != NULL && edns->opts != NULL) {
+    if (opts != NULL && opts->opts != NULL) {
         int i;
-        for (i = 0; i < edns->optcount; i++) {
-            opt = edns->opts + i;
+        for (i = 0; i < opts->optcount; i++) {
+            opt = opts->opts + i;
             ns_free_opt(opt);
         }
-        free(edns->opts);
+        free(opts->opts);
     }
 }
 
@@ -139,7 +139,7 @@ static void ns_msg_free_rdata(ns_rr_t *rr)
             ns_rdata_free_soa(rr);
             break;
         case NS_TYPE_OPT:
-            ns_rdata_free_edns(rr);
+            ns_rdata_free_opts(rr);
             break;
         case NS_TYPE_NULL:
         default:
@@ -400,9 +400,9 @@ static int ns_rdata_read_soa(ns_rr_t *rr, stream_t *s)
     return rc;
 }
 
-static edns_optinfo ns_rdata_read_edns_optinfo(ns_rr_t *rr, stream_t *s)
+static opt_rdata_into ns_rdata_read_edns_optinfo(ns_rr_t *rr, stream_t *s)
 {
-    edns_optinfo info = { 0 };
+    opt_rdata_into info = { 0 };
     int count = 0, size = 0;
     stream_t ns = STREAM_INIT();
     ns.array = s->array + s->pos;
@@ -430,32 +430,32 @@ static edns_optinfo ns_rdata_read_edns_optinfo(ns_rr_t *rr, stream_t *s)
     return info;
 }
 
-static int ns_rdata_read_edns(ns_rr_t *rr, stream_t *s)
+static int ns_rdata_read_opts(ns_rr_t *rr, stream_t *s)
 {
-    edns_optinfo info;
-    ns_edns_t *edns;
+    opt_rdata_into info;
+	ns_optlist_t *opts;
     ns_opt_t *opt;
     info = ns_rdata_read_edns_optinfo(rr, s);
     if (info.count < 0)
         return -1;
-    edns = malloc(sizeof(ns_edns_t));
-    if (edns) {
+	opts = malloc(sizeof(ns_optlist_t));
+    if (opts) {
         int i = 0;
         stream_t ns = *s;
         ns.size = s->pos + rr->rdlength;
-        edns->optcount = info.count;
-        edns->opts = malloc(edns->optcount * sizeof(ns_opt_t));
-        if (edns->opts == NULL) {
-            free(edns);
+		opts->optcount = info.count;
+		opts->opts = malloc(opts->optcount * sizeof(ns_opt_t));
+        if (opts->opts == NULL) {
+            free(opts);
             return -1;
         }
-        memset(edns->opts, 0, edns->optcount * sizeof(ns_opt_t));
+        memset(opts->opts, 0, opts->optcount * sizeof(ns_opt_t));
 #define do_return(n) \
-        for (i = 0; i < edns->optcount; i++) { \
-            opt = edns->opts + i; \
+        for (i = 0; i < opts->optcount; i++) { \
+            opt = opts->opts + i; \
             free(opt->data); \
         } \
-        free(edns); \
+        free(opts); \
         return (n);
 
 #define check_size(n) \
@@ -464,7 +464,7 @@ static int ns_rdata_read_edns(ns_rr_t *rr, stream_t *s)
         }
 
         while(stream_rsize(&ns) > 0) {
-            opt = edns->opts + i;
+            opt = opts->opts + i;
             check_size(4);
             opt->code = (uint16_t)stream_readi16(&ns);
             opt->length = (uint16_t)stream_readi16(&ns);
@@ -477,7 +477,7 @@ static int ns_rdata_read_edns(ns_rr_t *rr, stream_t *s)
             stream_seek(&ns, opt->length, SEEK_CUR);
             i++;
         }
-        rr->rdata = edns;
+        rr->rdata = opts;
         return 0;
 #undef check_size
 #undef do_return
@@ -508,7 +508,7 @@ static int ns_read_rdata(ns_rr_t *rr, stream_t *s)
        case NS_TYPE_SOA:
             return ns_rdata_read_soa(rr, s);
        case NS_TYPE_OPT:
-            return ns_rdata_read_edns(rr, s);
+            return ns_rdata_read_opts(rr, s);
         case NS_TYPE_NULL:
         default:
             return ns_rdata_read_any(rr, s);
@@ -620,13 +620,34 @@ ns_rr_t *ns_find_rr(ns_msg_t *msg, int type)
 	return NULL;
 }
 
-ns_rr_t *ns_add_edns(ns_msg_t *msg)
+int ns_remove_rr(ns_msg_t* msg, ns_rr_t *rr)
+{
+	int i, rrcount;
+	ns_rr_t* p;
+
+	rrcount = ns_rrcount(msg);
+	for (i = rrcount - 1; i >= 0; i--) {
+		p = msg->rrs + i;
+		if (p == rr) {
+			ns_rdata_free_opts(rr);
+			free(rr->rdata);
+			memmove(msg->rrs + i, msg->rrs + i + 1,
+				(rrcount - i - 1) * sizeof(ns_rr_t));
+			msg->arcount--;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
+ns_rr_t *ns_add_optrr(ns_msg_t *msg)
 {
     ns_rr_t *rr, *rrs;
 
     rrs = realloc(msg->rrs, ((int)ns_rrcount(msg) + 1) * sizeof(ns_rr_t));
     if (rrs == NULL) {
-        loge("ns_add_edns: alloc\n");
+        loge("ns_add_optrr: alloc\n");
         return NULL;
     }
     msg->rrs = rrs;
@@ -639,7 +660,7 @@ ns_rr_t *ns_add_edns(ns_msg_t *msg)
     return rr;
 }
 
-int ns_remove_edns(ns_msg_t *msg)
+int ns_remove_optrr(ns_msg_t *msg)
 {
     int i, rrcount;
     ns_rr_t *rr;
@@ -652,7 +673,7 @@ int ns_remove_edns(ns_msg_t *msg)
         }
     }
     if (i >= 0) {
-        ns_rdata_free_edns(rr);
+        ns_rdata_free_opts(rr);
         free(rr->rdata);
         memmove(msg->rrs + i, msg->rrs + i + 1,
                 (rrcount - i - 1) * sizeof(ns_rr_t));
@@ -662,15 +683,15 @@ int ns_remove_edns(ns_msg_t *msg)
     return -1;
 }
 
-ns_opt_t *ns_edns_find_ecs(ns_rr_t *rr)
+ns_opt_t *ns_optrr_find_opt(ns_rr_t *rr, uint16_t code)
 {
-    ns_edns_t *edns = rr->rdata;
+	ns_optlist_t *opts = rr->rdata;
     ns_opt_t *opt;
     int i;
-    if (edns != NULL) {
-        for (i = 0; i < edns->optcount; i++) {
-            opt = edns->opts + i;
-            if (opt->code == NS_OPTCODE_ECS) {
+    if (opts != NULL) {
+        for (i = 0; i < opts->optcount; i++) {
+            opt = opts->opts + i;
+            if (opt->code == code) {
                 return opt;
             }
         }
@@ -678,36 +699,36 @@ ns_opt_t *ns_edns_find_ecs(ns_rr_t *rr)
     return NULL;
 }
 
-int ns_edns_remove_ecs(ns_rr_t *rr)
+int ns_optrr_remove_opt(ns_rr_t *rr, uint16_t code)
 {
-    ns_edns_t *edns = rr->rdata;
+	ns_optlist_t *opts = rr->rdata;
     ns_opt_t *opt;
     int i;
-    if (edns != NULL) {
-        for (i = 0; i < edns->optcount; i++) {
-            opt = edns->opts + i;
-			if (opt->code != NS_OPTCODE_ECS)
+    if (opts != NULL) {
+        for (i = 0; i < opts->optcount; i++) {
+            opt = opts->opts + i;
+			if (opt->code != code)
 				continue;
 			ns_free_opt(opt);
-			memmove(edns->opts + i, edns->opts + i + 1,
-				(edns->optcount - i - 1) * sizeof(ns_opt_t));
-			edns->optcount--;
+			memmove(opts->opts + i, opts->opts + i + 1,
+				(opts->optcount - i - 1) * sizeof(ns_opt_t));
+			opts->optcount--;
 			return 0;
 		}
     }
     return -1;
 }
 
-ns_opt_t *ns_edns_add_opt(ns_edns_t *edns, int optcode)
+ns_opt_t *ns_optrr_new_opt(ns_optlist_t *opts, int optcode)
 {
-	ns_opt_t *opts, *opt;
+	ns_opt_t *newlist, * opt;
 
-	opts = realloc(edns->opts, (edns->optcount + 1) * sizeof(ns_opt_t));
-	if (opts == NULL)
+	newlist = realloc(opts->opts, (opts->optcount + 1) * sizeof(ns_opt_t));
+	if (newlist == NULL)
 		return NULL;
-	edns->opts = opts;
-	opt = opts + edns->optcount;
-	edns->optcount++;
+	opts->opts = newlist;
+	opt = newlist + opts->optcount;
+	opts->optcount++;
 	memset(opt, 0, sizeof(ns_opt_t));
 	opt->code = optcode;
 
@@ -757,7 +778,7 @@ int ns_ecs_parse_subnet(struct sockaddr *addr /*out*/, int *pmask /*out*/, const
 	return 0;
 }
 
-int ns_edns_set_ecsopt(ns_opt_t *opt, struct sockaddr *addr, int srcprefix, int scopeprefix)
+int ns_set_ecs(ns_opt_t *opt, struct sockaddr *addr, int srcprefix, int scopeprefix)
 {
 	stream_t s = STREAM_INIT();
 	uint8_t *optdata;
@@ -765,13 +786,16 @@ int ns_edns_set_ecsopt(ns_opt_t *opt, struct sockaddr *addr, int srcprefix, int 
 	struct sockaddr_in *addr4;
 
 	if (addr->sa_family != AF_INET) {
-		loge("ns_edns_set_ecsopt: Only support IPv4\n");
+		loge("ns_set_ecs: Only support IPv4\n");
 		return -1;
 	}
 
 	addrlen = srcprefix / 8;
 	if (srcprefix % 8)
 		addrlen++;
+
+	if (addrlen > 4)
+		addrlen = 4;
 
 	addr4 = (struct sockaddr_in *)addr;
 
@@ -797,28 +821,28 @@ int ns_edns_set_ecsopt(ns_opt_t *opt, struct sockaddr *addr, int srcprefix, int 
 	return 0;
 }
 
-int ns_edns_set_ecs(ns_rr_t *rr, struct sockaddr *addr, int srcprefix, int scopeprefix)
+int ns_optrr_set_ecs(ns_rr_t *rr, struct sockaddr *addr, int srcprefix, int scopeprefix)
 {
-    ns_edns_t *edns = rr->rdata;
+	ns_optlist_t *opts = rr->rdata;
 	ns_opt_t *opt;
 
-	if (edns == NULL) {
-        edns = malloc(sizeof(ns_edns_t));
-        if (edns == NULL)
+	if (opts == NULL) {
+		opts = malloc(sizeof(ns_optlist_t));
+        if (opts == NULL)
             return -1;
-		memset(edns, 0, sizeof(ns_edns_t));
-		rr->rdata = edns;
+		memset(opts, 0, sizeof(ns_optlist_t));
+		rr->rdata = opts;
     }
 
-	opt = ns_edns_find_ecs(rr);
+	opt = ns_optrr_find_ecs(rr);
 
 	if (opt == NULL) {
-		opt = ns_edns_add_opt(edns, NS_OPTCODE_ECS);
+		opt = ns_optrr_new_opt(opts, NS_OPTCODE_ECS);
 		if (opt == NULL)
 			return -1;
 	}
     
-    return ns_edns_set_ecsopt(opt, addr, srcprefix, scopeprefix);
+    return ns_set_ecs(opt, addr, srcprefix, scopeprefix);
 }
 
 static int serialize_init(serialize_ctx *ctx)
@@ -1070,15 +1094,15 @@ static int ns_rdata_write_soa(serialize_ctx *ctx, stream_t *s, ns_rr_t *rr)
 	return 0;
 }
 
-static int ns_rdata_write_edns(serialize_ctx *ctx, stream_t *s, ns_rr_t *rr)
+static int ns_rdata_write_opts(serialize_ctx *ctx, stream_t *s, ns_rr_t *rr)
 {
-	ns_edns_t *edns = rr->rdata;
+	ns_optlist_t *opts = rr->rdata;
 	ns_opt_t *opt;
 	int i;
 
-	if (edns != NULL) {
-		for (i = 0; i < edns->optcount; i++) {
-			opt = edns->opts + i;
+	if (opts != NULL) {
+		for (i = 0; i < opts->optcount; i++) {
+			opt = opts->opts + i;
 
 			if (stream_writei16(s, opt->code) != 2)
 				return -1;
@@ -1123,7 +1147,7 @@ static int ns_write_rdata(serialize_ctx *ctx, stream_t *s, ns_rr_t *rr)
 	case NS_TYPE_SOA:
 		return ns_rdata_write_soa(ctx, s, rr);
 	case NS_TYPE_OPT:
-		return ns_rdata_write_edns(ctx, s, rr);
+		return ns_rdata_write_opts(ctx, s, rr);
 	case NS_TYPE_NULL:
 	default:
 		return ns_rdata_write_any(ctx, s, rr);
@@ -1242,22 +1266,78 @@ static void ns_rdata_print_soa(ns_rr_t *rr)
 	}
 }
 
+static ns_ecs_t* ns_parse_ect(ns_ecs_t *ecs, char *data, int len)
+{
+	int addrlen, i;
+	stream_t ns = STREAM_INIT();
+	ns.array = data;
+	ns.cap = len;
+	ns.size = len;
+	ns.pos = 0;
+
+#define check_size(n) \
+        if (stream_rsize(&ns) < (n)) { \
+            return NULL; \
+        }
+
+	memset(ecs, 0, sizeof(ns_ecs_t));
+
+	check_size(2);
+	ecs->family = stream_readi16(&ns);
+	check_size(2);
+	ecs->src_prefix_len = stream_readi8(&ns);
+	ecs->scope_prefix_len = stream_readi8(&ns);
+
+	addrlen = ecs->src_prefix_len / 8;
+	if (ecs->src_prefix_len % 8)
+		addrlen++;
+
+	if (addrlen > 4)
+		return NULL;
+
+	check_size(addrlen);
+
+	for (i = 0; i < addrlen; i++) {
+		((uint8_t *)(&ecs->subnet))[i] = stream_readi8(&ns);
+	}
+
+#undef check_size
+
+	return ecs;
+}
+
 static void ns_rdata_print_edns(ns_rr_t *rr)
 {
-	ns_edns_t *edns = rr->rdata;
+	ns_optlist_t *opts = rr->rdata;
 	ns_opt_t *opt;
 	int i;
 
-	if (edns != NULL) {
-        logn("OPTCOUNT: 0x%x\n", edns->optcount);
-		for (i = 0; i < edns->optcount; i++) {
-			opt = edns->opts + i;
+	if (opts != NULL) {
+        logn("OPTCOUNT: 0x%x\n", opts->optcount);
+		for (i = 0; i < opts->optcount; i++) {
+			opt = opts->opts + i;
 
 			logn("OPT-CODE: 0x%x, OPT-LEN: 0x%x, OPT-DATA:\n",
 				(int)(opt->code & 0xffff),
 				(int)(opt->length & 0xffff));
 			if (opt->data != NULL) {
-				bprint(opt->data, opt->length);
+				if (opt->code == NS_OPTCODE_ECS) {
+					ns_ecs_t ecs;
+					if (ns_parse_ect(&ecs, opt->data, opt->length)) {
+						char ipname[INET6_ADDRSTRLEN];
+						struct in_addr* addr = &ecs.subnet;
+						logn("ECS %s/%d SCOPE %d\n",
+							inet_ntop(AF_INET, addr, ipname, INET6_ADDRSTRLEN),
+							ecs.src_prefix_len,
+							ecs.scope_prefix_len);
+					}
+					else {
+						bprint(opt->data, opt->length);
+					}
+				}
+				else {
+					bprint(opt->data, opt->length);
+				}
 			}
 		}
 	}

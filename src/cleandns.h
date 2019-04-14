@@ -65,7 +65,7 @@ typedef struct cleandns_ctx {
 	int daemonize;
 	net_list_t chnroute_list;
 	struct addrinfo *dns_server_addr[MAX_DNS_SERVER];
-	int dns_server_cmp[MAX_DNS_SERVER];
+	int is_foreign_dns[MAX_DNS_SERVER];
 	int dns_server_num;
 	subnet_t china_net;
 	subnet_t foreign_net;

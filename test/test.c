@@ -79,7 +79,7 @@ static void check_ns_msg(ns_msg_t *msg, int ecs)
 	assert(soa->minimum == 0x3c);
 
 	if (ecs) {
-		ns_edns_t *edns;
+		ns_optlist_t *opts;
 		ns_opt_t *opt;
 		uint8_t *optdata;
 		rr = msg->rrs + 2;
@@ -87,11 +87,11 @@ static void check_ns_msg(ns_msg_t *msg, int ecs)
 		assert(rr->type == NS_TYPE_OPT);
 		assert(rr->cls == NS_PAYLOAD_SIZE);
 		assert(rr->ttl == 0);
-		edns = rr->rdata;
-		assert(edns != NULL);
-		assert(edns->optcount == 1);
-		assert(edns->opts != NULL);
-		opt = edns->opts;
+		opts = rr->rdata;
+		assert(opts != NULL);
+		assert(opts->optcount == 1);
+		assert(opts->opts != NULL);
+		opt = opts->opts;
 		assert(opt != NULL);
 		assert(opt->code == NS_OPTCODE_ECS);
 		assert(opt->length == 7);
@@ -185,16 +185,16 @@ static void test_parse_request()
 
     printf("\nWITH EDNS-CLIENT_SUBNET: \n");
 	
-	rr = ns_find_edns(&msg);
+	rr = ns_find_opt_rr(&msg);
 	assert(rr == NULL);
 
-	rr = ns_add_edns(&msg);
+	rr = ns_add_optrr(&msg);
 	assert(rr != NULL);
 
 	r = ns_ecs_parse_subnet((struct sockaddr *)&addr, &mask, "61.135.169.121/24");
 	assert(r == 0);
 
-	r = ns_edns_set_ecs(rr, (struct sockaddr *)&addr, mask, 0);
+	r = ns_optrr_set_ecs(rr, (struct sockaddr *)&addr, mask, 0);
 	assert(r == 0);
 
 	stream_reset(&s);
@@ -217,13 +217,13 @@ static void test_parse_request()
 
 	printf("\nWITH COMPRESSION AND EDNS-CLIENT_SUBNET: \n");
 
-	rr = ns_find_edns(&msg);
+	rr = ns_find_opt_rr(&msg);
 	assert(rr != NULL);
 
 	r = ns_ecs_parse_subnet((struct sockaddr *)&addr, &mask, "61.135.170.121/24");
 	assert(r == 0);
 
-	r = ns_edns_set_ecs(rr, (struct sockaddr *)&addr, mask, 0);
+	r = ns_optrr_set_ecs(rr, (struct sockaddr *)&addr, mask, 0);
 	assert(r == 0);
 
 	stream_reset(&s);

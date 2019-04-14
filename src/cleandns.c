@@ -148,10 +148,10 @@ int main(int argc, char **argv)
 			dns_ip = (struct in_addr*)&dns_addr->sin_addr;
 			/* only foreign dns server need compression*/
 			if (!test_ip_in_list(dns_ip, &cleandns.chnroute_list)) {
-				cleandns.dns_server_cmp[i] = 1;
+				cleandns.is_foreign_dns[i] = 1;
 			}
 			else {
-				cleandns.dns_server_cmp[i] = 0;
+				cleandns.is_foreign_dns[i] = 0;
 			}
 		}
 	}
@@ -197,7 +197,7 @@ int main(int argc, char **argv)
 		for (i = 0; i < cleandns.dns_server_num; i++) {
 			dns_addr = (struct sockaddr_in*) cleandns.dns_server_addr[i]->ai_addr;
 			logi("compression %s on %s\n",
-				cleandns.dns_server_cmp[i] ? "enabled" : "disabled",
+				cleandns.is_foreign_dns[i] ? "enabled" : "disabled",
 				get_addrname((struct sockaddr*)dns_addr));
 		}
 		logi("\n");
@@ -399,19 +399,19 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 
 	if (subnet) {
         ns_rr_t *rr;
-		rr = ns_find_edns(msg);
+		rr = ns_find_opt_rr(msg);
         if (rr == NULL) {
-            rr = ns_add_edns(msg);
+            rr = ns_add_optrr(msg);
             if (rr == NULL) {
-                loge("send_nsmsg: Can't add edns\n");
+                loge("send_nsmsg: Can't add option record to ns_msg_t\n");
                 return -1;
             }
         }
 
 		rr->cls = NS_PAYLOAD_SIZE; /* set edns payload size */
 
-        if (ns_edns_set_ecs(rr, (struct sockaddr *)&subnet->addr, subnet->mask, 0) != 0) {
-            loge("send_nsmsg: Can't set ecs\n");
+        if (ns_optrr_set_ecs(rr, (struct sockaddr *)&subnet->addr, subnet->mask, 0) != 0) {
+            loge("send_nsmsg: Can't add ecs option\n");
             return -1;
         }
 	}
@@ -472,7 +472,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 	if (cleandns->china_ip == NULL && cleandns->foreign_ip == NULL) {
 		for (i = 0; i < cleandns->dns_server_num; i++) {
 			msg->id = (uint16_t)(req->id + i);
-			if (send_nsmsg(cleandns, msg, cleandns->dns_server_cmp[i], NULL,
+			if (send_nsmsg(cleandns, msg, cleandns->is_foreign_dns[i], NULL,
 				cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
 				cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
 				loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
@@ -487,7 +487,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 		if (cleandns->china_ip) {
 			for (i = 0; i < cleandns->dns_server_num; i++) {
 				msg->id = (uint16_t)(req->id + i);
-				if (send_nsmsg(cleandns, msg, cleandns->dns_server_cmp[i], &cleandns->china_net,
+				if (send_nsmsg(cleandns, msg, cleandns->is_foreign_dns[i], &cleandns->china_net,
 					cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
 					cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
@@ -501,7 +501,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 		if (cleandns->foreign_ip) {
 			for (i = 0; i < cleandns->dns_server_num; i++) {
 				msg->id = (uint16_t)(req->id + cleandns->dns_server_num + i);
-				if (send_nsmsg(cleandns, msg, cleandns->dns_server_cmp[i], &cleandns->foreign_net,
+				if (send_nsmsg(cleandns, msg, cleandns->is_foreign_dns[i], &cleandns->foreign_net,
 					cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
 					cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'foreign_ip'.\n");
@@ -543,7 +543,7 @@ static int handle_listen_sock_recv(cleandns_ctx *cleandns,
 		}
 
 		req->old_id = msg.id;
-        req->edns = (ns_find_edns(&msg) != NULL);
+        req->edns = (ns_find_ecs(&msg, NULL) != NULL);
 
 		if (handle_listen_sock_recv_nsmsg(cleandns, &msg, req) != 0) {
 			loge("handle_listen_sock_recv: failed to handle 'msg'.\n");
@@ -635,11 +635,32 @@ static int check_rr(cleandns_ctx *cleandns, ns_rr_t *rr)
 static int check_ns_msg(cleandns_ctx *cleandns, ns_msg_t *msg)
 {
 	int i, rrcount, flags = 0;
+	int dns_idx;
+	int is_foreign_dns;
 	ns_rr_t *rr;
 
-	if (msg->arcount == 0)
+	dns_idx = dns_index(msg->id, cleandns->dns_server_num);
+	is_foreign_dns = cleandns->is_foreign_dns[dns_idx];
+
+	if (msg->qdcount == 0)
 		return FLG_POLLUTE;
-	
+
+	if (msg->ancount == 0)
+		return FLG_POLLUTE;
+
+
+	/*if it's come from foreign dns server, it should be have esc.*/
+	if (is_foreign_dns) {
+		if (msg->arcount == 0)
+			return FLG_POLLUTE;
+
+		/* comment below code, 
+		  since with foreign subnet, google (8.8.8.8) response with no ECS.
+
+		if (ns_find_ecs(msg, NULL) == NULL)
+			return FLG_POLLUTE;*/
+	}
+
 	rrcount = msg->ancount + msg->nscount;
 	for (i = 0; i < rrcount; i++) {
 		rr = msg->rrs + i;
@@ -684,11 +705,6 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 					logi("response_best_nsmsg: polluted msg (#%d)\n", i);
 				}
 				score[i] = -1;
-			}
-			else if (req->edns && !(flags & FLG_OPT)) {
-				if (loglevel >= LOG_INFO) {
-					logi("response_best_nsmsg: no edns msg (#%d)\n", i);
-				}
 			}
 			else {
 				/* chose a best msg */
@@ -751,7 +767,14 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 
 		best->id = req->old_id;
 		if (!req->edns) {
-			ns_remove_edns(best);
+			ns_rr_t* rr;
+			rr = ns_find_opt_rr(best);
+			if (rr != NULL) {
+				ns_optrr_remove_all_ecs(rr);
+				if (rr->opts == NULL || rr->opts->optcount == 0) {
+					ns_remove_rr(best, rr);
+				}
+			}
 		}
 		else {
 			/*TODO: restore client ip*/
@@ -813,12 +836,6 @@ static int handle_remote_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg)
 	if (flags & FLG_POLLUTE) {
 		if (loglevel >= LOG_INFO) {
 			logi("handle_remote_sock_recv_nsmsg: drop polluted msg\n");
-		}
-		return 0;
-	}
-	else if (req->edns && !(flags & FLG_OPT)) {
-		if (loglevel >= LOG_INFO) {
-			logi("handle_remote_sock_recv_nsmsg: drop msg base on no edns msg\n");
 		}
 		return 0;
 	}

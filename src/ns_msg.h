@@ -79,6 +79,13 @@ extern "C" {
 #define ADDR_FAMILY_NUM_IP  1 /*IPv4*/
 #define ADDR_FAMILY_NUM_IP6 2 /*IPv6*/
 
+#ifndef TRUE
+#define TRUE 1
+#endif
+#ifndef FALSE
+#define FALSE 0
+#endif
+
 typedef struct ns_hinfo_t {
 	char *cpu;
 	char *os;
@@ -104,16 +111,23 @@ typedef struct ns_soa_t {
 	uint32_t minimum;
 } ns_soa_t;
 
+typedef struct ns_ecs_t {
+	uint16_t family;
+	uint8_t src_prefix_len;
+	uint8_t scope_prefix_len;
+	struct in_addr subnet;
+} ns_ecs_t;
+
 typedef struct ns_opt_t {
 	uint16_t code;
 	uint16_t length;
 	void *data;
 } ns_opt_t;
 
-typedef struct ns_edns_t {
+typedef struct ns_optlist_t {
     ns_opt_t *opts;
     int optcount;
-} ns_edns_t;
+} ns_optlist_t;
 
 typedef struct ns_rr_t {
 	char *name;
@@ -121,7 +135,10 @@ typedef struct ns_rr_t {
 	uint16_t cls; /* class */
 	uint32_t ttl;
 	uint16_t rdlength;
-	void *rdata;
+	union {
+		void* rdata;
+		ns_optlist_t *opts;
+	};
 } ns_rr_t;
 
 typedef struct ns_qr_t {
@@ -149,16 +166,47 @@ int ns_parse(ns_msg_t *msg, uint8_t *bytes, int nbytes);
 
 ns_rr_t *ns_find_rr(ns_msg_t *msg, int type);
 
-#define ns_find_edns(msg) \
+int ns_remove_rr(ns_msg_t* msg, ns_rr_t* rr);
+
+#define ns_find_opt_rr(msg) \
 	ns_find_rr((msg), NS_TYPE_OPT)
 
-ns_rr_t *ns_add_edns(ns_msg_t *msg);
+ns_rr_t *ns_add_optrr(ns_msg_t *msg);
 
-int ns_remove_edns(ns_msg_t *msg);
+/* remove first find optrr */
+int ns_remove_optrr(ns_msg_t *msg);
 
-ns_opt_t *ns_edns_find_ecs(ns_rr_t *rr);
+#define ns_remove_all_optrr(msg) while (ns_remove_optrr(msg) == 0){}
 
-int ns_edns_set_ecs(ns_rr_t *rr, struct sockaddr *addr, int srcprefix, int scopeprefix);
+ns_opt_t* ns_optrr_find_opt(ns_rr_t* rr, uint16_t code);
+
+/* remove first find opt */
+int ns_optrr_remove_opt(ns_rr_t* rr, uint16_t code);
+
+#define ns_optrr_remove_all_opt(rr, code) while (ns_optrr_remove_opt((msg), (code)) == 0){}
+
+#define ns_optrr_find_ecs(rr) ns_optrr_find_opt((rr), NS_OPTCODE_ECS)
+#define ns_optrr_remove_ecs(rr) ns_optrr_remove_opt((rr), NS_OPTCODE_ECS)
+#define ns_optrr_remove_all_ecs(rr) while (ns_optrr_remove_ecs(rr) == 0){}
+
+/*create new ns_opt_t, then append to 'opts'. return new created ns_opt_t. */
+ns_opt_t* ns_optrr_new_opt(ns_optlist_t* opts, int optcode);
+
+static inline ns_opt_t* ns_find_ecs(ns_msg_t* msg, ns_rr_t** prr)
+{
+	ns_rr_t* rr;
+	ns_opt_t* opt;
+	rr = ns_find_opt_rr(msg);
+	if (rr == NULL)
+		return NULL;
+	opt = ns_optrr_find_ecs(rr);
+	if (opt == NULL)
+		return NULL;
+	if (prr) (*prr) = rr;
+	return opt;
+}
+
+int ns_optrr_set_ecs(ns_rr_t *rr, struct sockaddr *addr, int srcprefix, int scopeprefix);
 
 int ns_serialize(stream_t *s, ns_msg_t *msg, int compression);
 
@@ -182,7 +230,7 @@ int ns_ecs_parse_subnet(struct sockaddr *addr /*out*/, int *pmask /*out*/, const
 static inline int ns_flag_rcode(ns_msg_t *msg)
 {
     int rcode = (msg->flags) & 0xf;
-    ns_rr_t *rr = ns_find_edns(msg);
+    ns_rr_t *rr = ns_find_rr(msg, NS_TYPE_OPT);
     if (rr) {
         rcode |= (rr->ttl >> 20) & 0xff00;
     }
