@@ -113,6 +113,7 @@ CleanDNS 结果（节选）：
 
 分析结果可发现，ARCOUNT 为 0 的全都是被污染的结果。
 
+作者仅进行了简单的验证，还需要更多的验证。
 
 [CleanDNS]:  https://github.com/GangZhuo/CleanDNS
 [Extension Mechanisms for DNS (RFC6891)]:  https://tools.ietf.org/rfc/rfc6891.txt
