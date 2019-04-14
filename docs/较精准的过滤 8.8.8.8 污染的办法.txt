@@ -18,7 +18,7 @@
 
 返回结果的说明如下图。
 
-[![返回结果的说明](a1.jpg)]
+[![返回结果的说明](https://github.com/GangZhuo/CleanDNS/raw/master/docs/a1.jpg)]
 
 
 当我们使用 dig 请求域名时，CleanDNS 将打印出如下的结果。
