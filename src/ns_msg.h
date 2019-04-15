@@ -75,6 +75,7 @@ extern "C" {
 #define NS_CLASS_HS			NS_QCLASS_HS
 
 #define NS_OPTCODE_ECS      8 /* edns-client-subnet */
+#define NS_OPTCODE_SVR		65530 /* customer code, which store the dns server name */
 
 #define ADDR_FAMILY_NUM_IP  1 /*IPv4*/
 #define ADDR_FAMILY_NUM_IP6 2 /*IPv6*/
@@ -191,6 +192,8 @@ int ns_optrr_remove_opt(ns_rr_t* rr, uint16_t code);
 
 /*create new ns_opt_t, then append to 'opts'. return new created ns_opt_t. */
 ns_opt_t* ns_optrr_new_opt(ns_optlist_t* opts, int optcode);
+
+ns_opt_t* ns_optrr_set_opt(ns_rr_t* rr, uint16_t code, uint16_t len, const char* data);
 
 static inline ns_opt_t* ns_find_ecs(ns_msg_t* msg, ns_rr_t** prr)
 {

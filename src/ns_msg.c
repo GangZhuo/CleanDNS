@@ -735,6 +735,41 @@ ns_opt_t *ns_optrr_new_opt(ns_optlist_t *opts, int optcode)
 	return opt;
 }
 
+ns_opt_t* ns_optrr_set_opt(ns_rr_t* rr, uint16_t code, uint16_t len, const char *data)
+{
+	ns_optlist_t* opts = rr->rdata;
+	ns_opt_t* opt;
+
+	if (opts == NULL) {
+		opts = malloc(sizeof(ns_optlist_t));
+		if (opts == NULL)
+			return NULL;
+		memset(opts, 0, sizeof(ns_optlist_t));
+		rr->rdata = opts;
+	}
+
+	opt = ns_optrr_find_opt(rr, code);
+
+	if (opt == NULL) {
+		opt = ns_optrr_new_opt(opts, code);
+		if (opt == NULL)
+			return NULL;
+	}
+
+	ns_free_opt(opt);
+
+	opt->code = code;
+	opt->length = len;
+	opt->data = malloc(len);
+
+	if (opt->data == NULL)
+		return NULL;
+
+	memcpy(opt->data, data, opt->length);
+
+	return opt;
+}
+
 int ns_ecs_parse_subnet(struct sockaddr *addr /*out*/, int *pmask /*out*/, const char *str /*in*/)
 {
 	char buf[INET6_ADDRSTRLEN], *sp_pos;

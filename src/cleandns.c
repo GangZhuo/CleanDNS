@@ -682,6 +682,7 @@ static int check_ns_msg(cleandns_ctx *cleandns, ns_msg_t *msg)
 static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 {
 	ns_msg_t* best = NULL;
+	struct sockaddr_in* dns;
 
 	if (req->ns_msg_num == 0) {
 		loge("%s: resolve failed.\n", req->questions);
@@ -692,7 +693,6 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 		int score[MAX_NS_MSG] = { 0 };
 		int i, flags, best_index = 0;
 		ns_msg_t* msg;
-		struct sockaddr_in* dns;
 
 		for (i = 0; i < req->ns_msg_num; i++) {
 			msg = req->ns_msg + i;
@@ -764,6 +764,34 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 
 	if (best) {
 		int rc = -1;
+		
+		if (loglevel >= LOG_INFO) {
+			ns_rr_t* rr;
+			char *dns_name;
+
+			rr = ns_find_opt_rr(best);
+
+			if (rr == NULL) {
+				rr = ns_add_optrr(best);
+				if (rr == NULL) {
+					loge("response_best_nsmsg: Can't add option record to ns_msg_t\n");
+					return -1;
+				}
+			}
+
+			dns = (struct sockaddr_in*)
+				cleandns->dns_server_addr[dns_index(best->id, cleandns->dns_server_num)]->ai_addr;
+
+			dns_name = get_addrname((struct sockaddr*)dns);
+
+			rr->cls = NS_PAYLOAD_SIZE; /* reset edns payload size */
+
+			if (ns_optrr_set_opt(rr, NS_OPTCODE_SVR, strlen(dns_name)+1, dns_name) == NULL) {
+				loge("response_best_nsmsg: Can't add dns name\n");
+				return -1;
+			}
+		}
+		
 
 		best->id = req->old_id;
 
