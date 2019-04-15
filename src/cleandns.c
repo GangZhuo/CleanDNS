@@ -766,19 +766,6 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 		int rc = -1;
 
 		best->id = req->old_id;
-		if (!req->edns) {
-			ns_rr_t* rr;
-			rr = ns_find_opt_rr(best);
-			if (rr != NULL) {
-				ns_optrr_remove_all_ecs(rr);
-				if (rr->opts == NULL || rr->opts->optcount == 0) {
-					ns_remove_rr(best, rr);
-				}
-			}
-		}
-		else {
-			/*TODO: restore client ip*/
-		}
 
 		if (send_nsmsg(cleandns, best, 0, NULL, cleandns->listen_sock,
 			(struct sockaddr*)(&req->addr), req->addrlen) != 0) {
