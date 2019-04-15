@@ -408,7 +408,7 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
             }
         }
 
-		rr->cls = NS_PAYLOAD_SIZE; /* set edns payload size */
+		rr->cls = NS_PAYLOAD_SIZE; /* reset edns payload size */
 
         if (ns_optrr_set_ecs(rr, (struct sockaddr *)&subnet->addr, subnet->mask, 0) != 0) {
             loge("send_nsmsg: Can't add ecs option\n");
