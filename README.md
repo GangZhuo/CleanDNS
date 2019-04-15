@@ -106,15 +106,15 @@ See [About chnroute] on [ChinaDNS].
 ### Ref:
 
 * [ChinaDNS]
-* [RFC 1035]
-* [RFC 2671]
-* [RFC 6891]
-* [RFC 7871]
+* [RFC 1035 DOMAIN NAMES - IMPLEMENTATION AND SPECIFICATION]
+* [RFC 2671 Extension Mechanisms for DNS (EDNS0)]
+* [RFC 6891 Extension Mechanisms for DNS (EDNS(0))]
+* [RFC 7871 Client Subnet in DNS Queries]
     
 
 [ChinaDNS]:  https://github.com/shadowsocks/ChinaDNS
 [About chnroute]:  https://github.com/shadowsocks/ChinaDNS#about-chnroute
-[RFC 1035]:  https://www.ietf.org/rfc/rfc1035.txt	
-[RFC 2671]:  https://tools.ietf.org/rfc/rfc2671.txt
-[RFC 6891]:  https://tools.ietf.org/rfc/rfc6891.txt
-[RFC 7871]:  https://tools.ietf.org/rfc/rfc7871.txt
+[RFC 1035 DOMAIN NAMES - IMPLEMENTATION AND SPECIFICATION]:  https://www.ietf.org/rfc/rfc1035.txt	
+[RFC 2671 Extension Mechanisms for DNS (EDNS0)]:  https://tools.ietf.org/rfc/rfc2671.txt
+[RFC 6891 Extension Mechanisms for DNS (EDNS(0))]:  https://tools.ietf.org/rfc/rfc6891.txt
+[RFC 7871 Client Subnet in DNS Queries]:  https://tools.ietf.org/rfc/rfc7871.txt
