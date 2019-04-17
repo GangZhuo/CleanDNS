@@ -107,10 +107,10 @@ See [About chnroute] on [ChinaDNS].
 
 * [ChinaDNS]
 * [RFC 1035 DOMAIN NAMES - IMPLEMENTATION AND SPECIFICATION]
-* [RFC 2671 Extension Mechanisms for DNS (EDNS0)]
 * [RFC 6891 Extension Mechanisms for DNS (EDNS(0))]
 * [RFC 7871 Client Subnet in DNS Queries]
-    
+* [RFC 7873 Domain Name System (DNS) Cookies]
+* [Domain Name System (DNS) Parameters]
 
 [ChinaDNS]:  https://github.com/shadowsocks/ChinaDNS
 [About chnroute]:  https://github.com/shadowsocks/ChinaDNS#about-chnroute
@@ -118,3 +118,5 @@ See [About chnroute] on [ChinaDNS].
 [RFC 2671 Extension Mechanisms for DNS (EDNS0)]:  https://tools.ietf.org/rfc/rfc2671.txt
 [RFC 6891 Extension Mechanisms for DNS (EDNS(0))]:  https://tools.ietf.org/rfc/rfc6891.txt
 [RFC 7871 Client Subnet in DNS Queries]:  https://tools.ietf.org/rfc/rfc7871.txt
+[RFC 7873 Domain Name System (DNS) Cookies]: https://tools.ietf.org/rfc/rfc7873.txt
+[Domain Name System (DNS) Parameters]: https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml
