@@ -55,12 +55,24 @@ typedef struct {
 } timeout_handler_ctx;
 
 static int running = 0;
-static int is_use_syslog = 0;
+
+#ifdef WINDOWS
+static HANDLE syslog_handle = NULL;
+static cleandns_ctx* s_cleandns = NULL;
+static SERVICE_STATUS ServiceStatus = { 0 };
+static SERVICE_STATUS_HANDLE hStatus = NULL;
+
+static void ServiceMain(int argc, char** argv);
+static void ControlHandler(DWORD request);
+#else
+static int syslog_handle = 0;
+#endif
 
 static void usage();
 static int init_cleandns(cleandns_ctx *cleandns);
 static void free_cleandns(cleandns_ctx *cleandns);
 static int parse_args(cleandns_ctx *cleandns, int argc, char **argv);
+static void print_args(cleandns_ctx* cleandns);
 static int parse_chnroute(cleandns_ctx *cleandns);
 static int test_ip_in_list(struct in_addr *ip, const net_list_t *netlist);
 static int resolve_dns_server(cleandns_ctx *cleandns);
@@ -106,6 +118,7 @@ int main(int argc, char **argv)
 
 #ifdef WINDOWS
 	win_init();
+	s_cleandns = &cleandns;
 #endif
 
 	if (init_cleandns(&cleandns) != 0)
@@ -178,41 +191,55 @@ int main(int argc, char **argv)
 		run_as_daemonize(&cleandns);
 	}
 
-    logn("listen on %s:%s\n", cleandns.listen_addr, cleandns.listen_port);
-    logn("dns server: %s\n", cleandns.dns_server);
-    logn("chnroute: %s\n", cleandns.chnroute_file);
-    logn("china ip: %s\n", cleandns.china_ip);
-    logn("foreign ip: %s\n", cleandns.foreign_ip);
-    logn("compression: %s\n", cleandns.compression ? "on" : "off");
-    logn("timeout: %d\n", cleandns.timeout);
-	logn("loglevel: %d\n", loglevel);
-	if (cleandns.daemonize) {
-		logn("pid file: %s\n", cleandns.pid_file);
-	}
+#ifdef WINDOWS
+	else {
+#endif
 
-	if (loglevel >= LOG_INFO && cleandns.compression) {
-		int i;
-		struct sockaddr_in* dns_addr;
-		logi("\n");
-		for (i = 0; i < cleandns.dns_server_num; i++) {
-			dns_addr = (struct sockaddr_in*) cleandns.dns_server_addr[i]->ai_addr;
-			logi("compression %s on %s\n",
-				cleandns.is_foreign_dns[i] ? "enabled" : "disabled",
-				get_addrname((struct sockaddr*)dns_addr));
-		}
-		logi("\n");
-	}
+	print_args(&cleandns);
 
 	if (do_loop(&cleandns) != 0)
 		return EXIT_FAILURE;
 
+#ifdef WINDOWS
+	}
+#endif
+
 	free_cleandns(&cleandns);
 
-	if (is_use_syslog) {
+	if (syslog_handle) {
 		close_syslog();
 	}
 
     return EXIT_SUCCESS;
+}
+
+static void print_args(cleandns_ctx* cleandns)
+{
+
+	logn("listen on %s:%s\n", cleandns->listen_addr, cleandns->listen_port);
+	logn("dns server: %s\n", cleandns->dns_server);
+	logn("chnroute: %s\n", cleandns->chnroute_file);
+	logn("china ip: %s\n", cleandns->china_ip);
+	logn("foreign ip: %s\n", cleandns->foreign_ip);
+	logn("compression: %s\n", cleandns->compression ? "on" : "off");
+	logn("timeout: %d\n", cleandns->timeout);
+	logn("loglevel: %d\n", loglevel);
+	if (cleandns->daemonize) {
+		logn("pid file: %s\n", cleandns->pid_file);
+	}
+
+	if (loglevel >= LOG_INFO && cleandns->compression) {
+		int i;
+		struct sockaddr_in* dns_addr;
+		logi("\n");
+		for (i = 0; i < cleandns->dns_server_num; i++) {
+			dns_addr = (struct sockaddr_in*) cleandns->dns_server_addr[i]->ai_addr;
+			logi("compression %s on %s\n",
+				cleandns->is_foreign_dns[i] ? "enabled" : "disabled",
+				get_addrname((struct sockaddr*)dns_addr));
+		}
+		logi("\n");
+	}
 }
 
 static int do_loop(cleandns_ctx *cleandns)
@@ -1389,15 +1416,39 @@ Online help: <https://github.com/GangZhuo/CleanDNS>\n");
 static void syslog_vprintf(int mask, const char* fmt, va_list args)
 {
 #ifdef WINDOWS
-	loge("syslog_vprintf(): not implemented in Windows port");
-	exit(1);
+	char buf[640];
+	int priority = log_level_comp(mask);
+	WORD wType;
+
+	memset(buf, 0, sizeof(buf));
+	vsnprintf(buf, sizeof(buf) - 1, fmt, args);
+
+	switch (priority) {
+	case LOG_EMERG:
+	case LOG_ALERT:
+	case LOG_CRIT:
+	case LOG_ERR:
+		wType = EVENTLOG_ERROR_TYPE;
+		break;
+	case LOG_WARNING:
+		wType = EVENTLOG_WARNING_TYPE;
+		break;
+	case LOG_NOTICE:
+	case LOG_INFO:
+	case LOG_DEBUG:
+	default:
+		wType = EVENTLOG_INFORMATION_TYPE;
+		break;
+	}
+
+	ReportEvent(syslog_handle, wType, 0, 0, NULL, 1, 0, &buf, NULL);
+
 #else
 	char buf[640];
 	int priority = log_level_comp(mask);
 
 	memset(buf, 0, sizeof(buf));
 	vsnprintf(buf, sizeof(buf) - 1, fmt, args);
-
 	syslog(priority, "%s", buf);
 #endif
 }
@@ -1405,11 +1456,16 @@ static void syslog_vprintf(int mask, const char* fmt, va_list args)
 static void open_syslog()
 {
 #ifdef WINDOWS
-	loge("use_syslog(): not implemented in Windows port");
-	exit(1);
+	syslog_handle = RegisterEventSource(NULL, CLEANDNS_NAME);
+	if (!syslog_handle) {
+		loge("open_syslog(): cannot register event source");
+		exit(1);
+	}
+	log_vprintf = syslog_vprintf;
+	log_vprintf_with_timestamp = syslog_vprintf;
 #else
 	openlog(CLEANDNS_NAME, LOG_CONS | LOG_PID, LOG_DAEMON);
-	is_use_syslog = 1;
+	syslog_handle = 1;
 	log_vprintf = syslog_vprintf;
 	log_vprintf_with_timestamp = syslog_vprintf;
 #endif
@@ -1418,11 +1474,17 @@ static void open_syslog()
 static void close_syslog()
 {
 #ifdef WINDOWS
-	loge("close_syslog(): not implemented in Windows port");
-	exit(1);
+	if (syslog_handle) {
+		log_vprintf = log_default_vprintf;
+		log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
+		if (!DeregisterEventSource(syslog_handle)) {
+			logw("close_syslog(): cannot deregister event source");
+		}
+		syslog_handle = NULL;
+	}
 #else
-	if (is_use_syslog) {
-		is_use_syslog = 0;
+	if (syslog_handle) {
+		syslog_handle = 0;
 		log_vprintf = log_default_vprintf;
 		log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
 		closelog();
@@ -1430,11 +1492,73 @@ static void close_syslog()
 #endif
 }
 
+#ifdef WINDOWS
+
+static void ServiceMain(int argc, char** argv)
+{
+	BOOL bRet;
+	bRet = TRUE;
+
+	ServiceStatus.dwServiceType = SERVICE_WIN32;
+	ServiceStatus.dwCurrentState = SERVICE_START_PENDING;
+	ServiceStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+
+	ServiceStatus.dwWin32ExitCode = 0;
+	ServiceStatus.dwServiceSpecificExitCode = 0;
+	ServiceStatus.dwCheckPoint = 0;
+	ServiceStatus.dwWaitHint = 0;
+
+	hStatus = RegisterServiceCtrlHandler(CLEANDNS_NAME, (LPHANDLER_FUNCTION)ControlHandler);
+	if (hStatus == (SERVICE_STATUS_HANDLE)0)
+	{
+		loge("ServiceMain(): cannot register service ctrl handler");
+		return;
+	}
+
+	ServiceStatus.dwCurrentState = SERVICE_RUNNING;
+	SetServiceStatus(hStatus, &ServiceStatus);
+
+	print_args(s_cleandns);
+
+	if (do_loop(s_cleandns) != 0)
+		return;
+}
+
+static void ControlHandler(DWORD request)
+{
+	switch (request) {
+	case SERVICE_CONTROL_STOP:
+	case SERVICE_CONTROL_SHUTDOWN:
+		running = 0;
+		free_cleandns(s_cleandns);
+		if (syslog_handle) {
+			close_syslog();
+		}
+		ServiceStatus.dwCurrentState = SERVICE_STOPPED;
+		ServiceStatus.dwWin32ExitCode = 0;
+		SetServiceStatus(hStatus, &ServiceStatus);
+		break;
+	default:
+		SetServiceStatus(hStatus, &ServiceStatus);
+		break;
+	}
+}
+
+#endif
+
 static void run_as_daemonize(cleandns_ctx* cleandns)
 {
 #ifdef WINDOWS
-	loge("run_as_daemonize(): not implemented in Windows port");
-	exit(1);
+	SERVICE_TABLE_ENTRY ServiceTable[2];
+	ServiceTable[0].lpServiceName = CLEANDNS_NAME;
+	ServiceTable[0].lpServiceProc = (LPSERVICE_MAIN_FUNCTION)ServiceMain;
+
+	ServiceTable[1].lpServiceName = NULL;
+	ServiceTable[1].lpServiceProc = NULL;
+
+	if (!StartServiceCtrlDispatcher(ServiceTable)) {
+		loge("run_as_daemonize(): cannot start service ctrl dispatcher");
+	}
 #else
 	pid_t pid, sid;
 	int dev_null;
