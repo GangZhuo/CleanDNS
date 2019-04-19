@@ -1778,6 +1778,10 @@ static void run_as_daemonize(cleandns_ctx* cleandns)
 	ServiceTable[1].lpServiceName = NULL;
 	ServiceTable[1].lpServiceProc = NULL;
 
+	if (cleandns->pid_file) {
+		logw("run_as_daemonize(): 'pid file' not implemented in Windows port");
+	}
+
 	if (!StartServiceCtrlDispatcher(ServiceTable)) {
 		loge("run_as_daemonize(): cannot start service ctrl dispatcher");
 	}
