@@ -1628,17 +1628,7 @@ static void write_log(const char *text)
 static void syslog_vprintf(int mask, const char* fmt, va_list args)
 {
 #ifdef WINDOWS
-	char buf[640];
-	int priority = log_level_comp(mask);
-	WORD wType;
-	LPCWSTR lpszStrings[2] = { NULL, NULL };
-
-	memset(buf, 0, sizeof(buf));
-	vsnprintf(buf, sizeof(buf) - 1, fmt, args);
-
-	//TODO: syslog_vprintf
-
-
+	logw("syslog_vprintf(): not implemented in Windows port");
 #else
 	char buf[640];
 	int priority = log_level_comp(mask);
@@ -1652,9 +1642,7 @@ static void syslog_vprintf(int mask, const char* fmt, va_list args)
 static void open_syslog()
 {
 #ifdef WINDOWS
-	is_use_syslog = 1;
-	log_vprintf = syslog_vprintf;
-	log_vprintf_with_timestamp = syslog_vprintf;
+	logw("use_syslog(): not implemented in Windows port");
 #else
 	openlog(CLEANDNS_NAME, LOG_CONS | LOG_PID, LOG_DAEMON);
 	is_use_syslog = 1;
@@ -1666,11 +1654,7 @@ static void open_syslog()
 static void close_syslog()
 {
 #ifdef WINDOWS
-	if (is_use_syslog) {
-		is_use_syslog = 0;
-		log_vprintf = log_default_vprintf;
-		log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
-	}
+	logw("close_syslog(): not implemented in Windows port");
 #else
 	if (is_use_syslog) {
 		is_use_syslog = 0;
