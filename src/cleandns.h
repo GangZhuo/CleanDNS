@@ -62,6 +62,7 @@ typedef struct cleandns_ctx {
 	int compression;
 	int timeout;
 	char* pid_file;
+	char* log_file;
 	int daemonize;
 	net_list_t chnroute_list;
 	struct addrinfo *dns_server_addr[MAX_DNS_SERVER];

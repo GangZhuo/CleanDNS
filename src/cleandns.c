@@ -225,6 +225,7 @@ static void print_args(cleandns_ctx* cleandns)
 	if (cleandns->daemonize) {
 		logn("pid file: %s\n", cleandns->pid_file);
 	}
+	logn("log_file: %s\n", cleandns->log_file);
 
 	if (loglevel >= LOG_INFO && cleandns->compression) {
 		int i;
@@ -1254,13 +1255,197 @@ static int parse_chnroute(cleandns_ctx *cleandns)
 	return 0;
 }
 
+//left trim
+static char* ltrim(char* s)
+{
+	char *p = s;
+	while (p && (*p) && isspace(*p))
+		p++;
+	return p;
+}
+
+//right trim
+static char* rtrim(char* s)
+{
+	int len;
+	char *p;
+
+	len = strlen(s);
+	p = s + len - 1;
+
+	while (p >= s && isspace(*p)) (*(p--)) = '\0';
+
+	return s;
+}
+
+static char* trim_quote(char* s)
+{
+	char *start, *end;
+	int len;
+
+	len = strlen(s);
+	start = s;
+	end = s + len - 1;
+
+	while ((*start) && ((*start) == '\'' || (*start) == '"'))
+		start++;
+
+	while (end >= start && ((*end) == '\'' || (*end) == '"')) (*(end--)) = '\0';
+
+	return start;
+}
+
+static void parse_option(char *ln, char **option, char **name, char **value)
+{
+	char *p = ln;
+
+	*option = p;
+	*name = NULL;
+	*value = NULL;
+
+	while (*p && !isspace(*p)) p++;
+
+	if (!(*p))
+		return;
+
+	*p = '\0';
+
+	p = ltrim(p + 1);
+
+	*name = p;
+
+	while (*p && !isspace(*p)) p++;
+
+	if (!(*p))
+		return;
+
+	*p = '\0';
+
+	p = ltrim(p + 1);
+
+	*value = trim_quote(p);
+}
+
+static int read_config_file(cleandns_ctx* cleandns, const char *config_file, int force)
+{
+	FILE* pf;
+	char line[2048], *ln;
+	char *option, *name, *value;
+	int len = 0, cnf_index = -1;
+
+	pf = fopen(config_file, "r");
+	if (!pf) {
+		loge("failed to open %s\n", config_file);
+		return -1;
+	}
+
+	while (!feof(pf)) {
+		memset(line, 0, sizeof(line));
+		fgets(line, sizeof(line) - 1, pf);
+		ln = line;
+		ln = ltrim(ln);
+		ln = rtrim(ln);
+		if (*ln == '\0' || *ln == '#')
+			continue;
+
+		if (strncmp(ln, "config", 6) == 0 &&
+			isspace(ln[6]) &&
+			strncmp((ln = ltrim(ln + 6)), "cfg", 3) == 0 &&
+			(ln[3] == '\0' || isspace(ln[3]))) {
+			cnf_index++;
+			if (cnf_index > 0) //only parse first 'config cfg'
+				break;
+			continue;
+		}
+
+		if (cnf_index != 0)
+			continue;
+
+		parse_option(ln, &option, &name, &value);
+
+		if (strcmp(option, "option") != 0 || !name || !value || !(*name) || !(*value)) {
+			loge("invalid option: %s %s %s\n", option, name, value);
+			fclose(pf);
+			return -1;
+		}
+
+		if (strcmp(name, "bind_addr") == 0) {
+			if (force || !cleandns->listen_addr) {
+				if (cleandns->listen_addr) free(cleandns->listen_addr);
+				cleandns->listen_addr = strdup(value);
+			}
+		}
+		else if (strcmp(name, "bind_port") == 0) {
+			if (force || !cleandns->listen_port) {
+				if (cleandns->listen_port) free(cleandns->listen_port);
+				cleandns->listen_port = strdup(value);
+			}
+		}
+		else if (strcmp(name, "chnroute") == 0) {
+			if (force || !cleandns->chnroute_file) {
+				if (cleandns->chnroute_file) free(cleandns->chnroute_file);
+				cleandns->chnroute_file = strdup(value);
+			}
+		}
+		else if (strcmp(name, "china_ip") == 0) {
+			if (force || !cleandns->china_ip) {
+				if (cleandns->china_ip) free(cleandns->china_ip);
+				cleandns->china_ip = strdup(value);
+			}
+		}
+		else if (strcmp(name, "foreign_ip") == 0) {
+			if (force || !cleandns->foreign_ip) {
+				if (cleandns->foreign_ip) free(cleandns->foreign_ip);
+				cleandns->foreign_ip = strdup(value);
+			}
+		}
+		else if (strcmp(name, "dns_server") == 0) {
+			if (force || !cleandns->dns_server) {
+				if (cleandns->dns_server) free(cleandns->dns_server);
+				cleandns->dns_server = strdup(value);
+			}
+		}
+		else if (strcmp(name, "compression") == 0) {
+			if (force || !cleandns->compression) {
+				cleandns->compression = strcmp(value, "1") == 0 ||
+					strcmp(value, "on") == 0 ||
+					strcmp(value, "true") == 0 ||
+					strcmp(value, "yes") == 0 ||
+					strcmp(value, "enabled") == 0;
+			}
+		}
+		else if (strcmp(name, "pid_file") == 0) {
+			if (force || !cleandns->pid_file) {
+				if (cleandns->pid_file) free(cleandns->pid_file);
+				cleandns->pid_file = strdup(value);
+			}
+		}
+		else if (strcmp(name, "log_file") == 0) {
+			if (force || !cleandns->log_file) {
+				if (cleandns->log_file) free(cleandns->log_file);
+				cleandns->log_file = strdup(value);
+			}
+		}
+		else {
+			//do nothing
+		}
+	}
+
+	fclose(pf);
+
+	return 0;
+}
+
 static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 {
 	int ch;
 	int option_index = 0;
+	const char *config_file = NULL;
 	static struct option long_options[] = {
 		{"daemon", no_argument,       NULL, 1},
 		{"pid",    required_argument, NULL, 2},
+		{"log",    required_argument, NULL, 3},
+		{"config", required_argument, NULL, 4},
 		{0, 0, 0, 0}
 	};
 
@@ -1272,6 +1457,13 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 		case 2:
 			if (cleandns->pid_file) free(cleandns->pid_file);
 			cleandns->pid_file = strdup(optarg);
+			break;
+		case 3:
+			if (cleandns->log_file) free(cleandns->log_file);
+			cleandns->log_file = strdup(optarg);
+			break;
+		case 4:
+			config_file = optarg;
 			break;
 		case 'h':
 			usage();
@@ -1317,6 +1509,13 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 			exit(1);
 		}
 	}
+
+	if (config_file) {
+		if (read_config_file(cleandns, config_file, FALSE)) {
+			return -1;
+		}
+	}
+
 	if (cleandns->dns_server == NULL) {
 		cleandns->dns_server = strdup(DEFAULT_DNS_SERVER);
 	}
@@ -1376,6 +1575,7 @@ static void free_cleandns(cleandns_ctx *cleandns)
 	free(cleandns->china_ip);
 	free(cleandns->foreign_ip);
 	free(cleandns->pid_file);
+	free(cleandns->log_file);
 
 	for (i = 0; i < cleandns->dns_server_num; i++) {
 		freeaddrinfo(cleandns->dns_server_addr[i]);
@@ -1394,19 +1594,21 @@ usage: cleandns [-h] [-l CHINA_IP] [-f FOREIGN_IP] [-b BIND_ADDR]\n\
 \n\
 Forward DNS requests.\n\
 \n\
-  -l CHINA_IP         china ip address, e.g. 114.114.114.114/24.\n\
-  -f FOREIGN_IP       foreign ip address, e.g. 8.8.8.8/24.\n\
-  -c CHNROUTE_FILE    path to china route file, default: " DEFAULT_CHNROUTE_FILE ".\n\
-  -b BIND_ADDR        address that listens, default: " DEFAULT_LISTEN_ADDR ".\n\
-  -p BIND_PORT        port that listens, default: " DEFAULT_LISTEN_PORT ".\n\
-  -s DNS              DNS server to use, default: " DEFAULT_DNS_SERVER ".\n\
-  -m                  use DNS compression pointer mutation, only avalidate on foreign dns server.\n\
-  -t                  timeout, default: " DEFAULT_TIMEOUT ".\n\
-  --daemon            daemonize.\n\
-  --pid=PID_FILE_PATH pid file, default: " DEFAULT_PID_FILE ".\n\
-  -v                  verbose logging.\n\
-  -h                  show this help message and exit.\n\
-  -V                  print version and exit.\n\
+  -l CHINA_IP          china ip address, e.g. 114.114.114.114/24.\n\
+  -f FOREIGN_IP        foreign ip address, e.g. 8.8.8.8/24.\n\
+  -c CHNROUTE_FILE     path to china route file, default: " DEFAULT_CHNROUTE_FILE ".\n\
+  -b BIND_ADDR         address that listens, default: " DEFAULT_LISTEN_ADDR ".\n\
+  -p BIND_PORT         port that listens, default: " DEFAULT_LISTEN_PORT ".\n\
+  -s DNS               DNS server to use, default: " DEFAULT_DNS_SERVER ".\n\
+  -m                   use DNS compression pointer mutation, only avalidate on foreign dns server.\n\
+  -t                   timeout, default: " DEFAULT_TIMEOUT ".\n\
+  --daemon             daemonize.\n\
+  --pid=PID_FILE_PATH  pid file, default: " DEFAULT_PID_FILE ", only avalidate on daemonize.\n\
+  --log=LOG_FILE_PATH  log file, only avalidate on daemonize.\n\
+  --config=CONFIG_PATH config file.\n\
+  -v                   verbose logging.\n\
+  -h                   show this help message and exit.\n\
+  -V                   print version and exit.\n\
 \n\
 Online help: <https://github.com/GangZhuo/CleanDNS>\n");
 }
