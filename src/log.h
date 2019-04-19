@@ -22,6 +22,8 @@ extern "C" {
 
 #define LOG_MASK_RAW	(1 << 8) /* log raw message */
 
+#define LOG_TIMEFORMAT "%Y-%m-%d %H:%M:%S"
+
 typedef void (*log_vprintf_fun)(int mask, const char* fmt, va_list args);
 
 extern log_vprintf_fun log_vprintf;
@@ -30,6 +32,7 @@ extern log_vprintf_fun log_vprintf_with_timestamp;
 int *log_pflags();
 int *log_plevel();
 
+const char* log_priorityname(int priority);
 void log_write(int mask, const char *fmt, ...);
 void log_vwrite(int mask, const char *fmt, va_list args);
 void log_default_vprintf(int mask, const char* fmt, va_list args);

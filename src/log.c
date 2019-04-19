@@ -4,8 +4,6 @@
 #include <string.h>
 #include <time.h>
 
-#define LOG_TIMEFORMAT "%Y-%m-%d %H:%M:%S"
-
 log_vprintf_fun log_vprintf = log_default_vprintf;
 log_vprintf_fun log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
 
@@ -52,6 +50,14 @@ void log_write(int mask, const char *fmt, ...)
 	}
 }
 
+const char* log_priorityname(int priority)
+{
+	if (priority >= 0 && priority < (sizeof(prioritynames) / sizeof(const char*)))
+		return prioritynames[priority];
+	
+	return NULL;
+}
+
 static FILE *log_fp(int mask)
 {
 	FILE *pf;
@@ -84,10 +90,7 @@ void log_default_vprintf_with_timestamp(int mask, const char *fmt, va_list args)
 	now = time(NULL);
 
 	strftime(date, sizeof(date), LOG_TIMEFORMAT, localtime(&now));
-	if (level >= 0 && level < (sizeof(prioritynames) / sizeof(const char *)))
-		extra_msg = prioritynames[level];
-	else
-		extra_msg = NULL;
+	extra_msg = log_priorityname(level);
 	if (extra_msg && strlen(extra_msg)) {
 		fprintf(pf, "%s [%s] %s", date, extra_msg, buf);
 	}

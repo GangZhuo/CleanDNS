@@ -56,6 +56,7 @@ typedef struct {
 
 static int running = 0;
 static int is_use_syslog = 0;
+static const char* log_file = NULL;
 
 #ifdef WINDOWS
 static cleandns_ctx* s_cleandns = NULL;
@@ -1613,15 +1614,42 @@ Forward DNS requests.\n\
 Online help: <https://github.com/GangZhuo/CleanDNS>\n");
 }
 
-static void write_log(const char *text)
+static void syslog_writefile(int mask, const char* fmt, va_list args)
 {
-	FILE* pf;
+	char buf[640], buf2[1024];
+	int len;
+	int level = log_level_comp(mask);
+	char date[32];
+	const char* extra_msg;
+	time_t now;
 
-	pf = fopen("d:\\cleandns.log", "a+");
-	if (pf) {
-		int len = strlen(text);
-		fwrite(text, 1, len, pf);
-		fclose(pf);
+	memset(buf, 0, sizeof(buf));
+	len = vsnprintf(buf, sizeof(buf) - 1, fmt, args);
+
+	now = time(NULL);
+
+	strftime(date, sizeof(date), LOG_TIMEFORMAT, localtime(&now));
+	extra_msg = log_priorityname(level);
+
+	memset(buf2, 0, sizeof(buf2));
+
+	if (extra_msg && strlen(extra_msg)) {
+		len = vsnprintf(buf2, sizeof(buf2) - 1, "%s [%s] %s", date, extra_msg, buf);
+	}
+	else {
+		len = vsnprintf(buf2, sizeof(buf2) - 1, "%s %s", date, buf);
+	}
+
+	if (len > 0) {
+		FILE* pf;
+		pf = fopen(log_file, "a+");
+		if (pf) {
+			fwrite(buf, 1, len, pf);
+			fclose(pf);
+		}
+		else {
+			printf("cannot open %s\n", log_file);
+		}
 	}
 }
 
@@ -1641,28 +1669,44 @@ static void syslog_vprintf(int mask, const char* fmt, va_list args)
 
 static void open_syslog()
 {
+	if (log_file) {
+		is_use_syslog = 1;
+		log_vprintf = syslog_writefile;
+		log_vprintf_with_timestamp = syslog_writefile;
+	}
+	else {
 #ifdef WINDOWS
-	logw("use_syslog(): not implemented in Windows port");
+		logw("use_syslog(): not implemented in Windows port");
 #else
-	openlog(CLEANDNS_NAME, LOG_CONS | LOG_PID, LOG_DAEMON);
-	is_use_syslog = 1;
-	log_vprintf = syslog_vprintf;
-	log_vprintf_with_timestamp = syslog_vprintf;
+		openlog(CLEANDNS_NAME, LOG_CONS | LOG_PID, LOG_DAEMON);
+		is_use_syslog = 1;
+		log_vprintf = syslog_vprintf;
+		log_vprintf_with_timestamp = syslog_vprintf;
 #endif
+	}
 }
 
 static void close_syslog()
 {
-#ifdef WINDOWS
-	logw("close_syslog(): not implemented in Windows port");
-#else
-	if (is_use_syslog) {
-		is_use_syslog = 0;
-		log_vprintf = log_default_vprintf;
-		log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
-		closelog();
+	if (log_file) {
+		if (is_use_syslog) {
+			is_use_syslog = 0;
+			log_vprintf = log_default_vprintf;
+			log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
+		}
 	}
+	else {
+#ifdef WINDOWS
+		logw("close_syslog(): not implemented in Windows port");
+#else
+		if (is_use_syslog) {
+			is_use_syslog = 0;
+			log_vprintf = log_default_vprintf;
+			log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
+			closelog();
+		}
 #endif
+	}
 }
 
 #ifdef WINDOWS
@@ -1724,6 +1768,8 @@ static void run_as_daemonize(cleandns_ctx* cleandns)
 #ifdef WINDOWS
 	SERVICE_TABLE_ENTRY ServiceTable[2];
 
+	log_file = cleandns->log_file;
+
 	open_syslog();
 
 	ServiceTable[0].lpServiceName = CLEANDNS_NAME;
@@ -1759,6 +1805,8 @@ static void run_as_daemonize(cleandns_ctx* cleandns)
 	}
 
 	umask(0);
+
+	log_file = cleandns->log_file;
 
 	open_syslog();
 
