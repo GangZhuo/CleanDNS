@@ -55,17 +55,15 @@ typedef struct {
 } timeout_handler_ctx;
 
 static int running = 0;
+static int is_use_syslog = 0;
 
 #ifdef WINDOWS
-static HANDLE syslog_handle = NULL;
 static cleandns_ctx* s_cleandns = NULL;
 static SERVICE_STATUS ServiceStatus = { 0 };
 static SERVICE_STATUS_HANDLE hStatus = NULL;
 
 static void ServiceMain(int argc, char** argv);
 static void ControlHandler(DWORD request);
-#else
-static int syslog_handle = 0;
 #endif
 
 static void usage();
@@ -206,7 +204,7 @@ int main(int argc, char **argv)
 
 	free_cleandns(&cleandns);
 
-	if (syslog_handle) {
+	if (is_use_syslog) {
 		close_syslog();
 	}
 
@@ -1413,35 +1411,31 @@ Forward DNS requests.\n\
 Online help: <https://github.com/GangZhuo/CleanDNS>\n");
 }
 
+static void write_log(const char *text)
+{
+	FILE* pf;
+
+	pf = fopen("d:\\cleandns.log", "a+");
+	if (pf) {
+		int len = strlen(text);
+		fwrite(text, 1, len, pf);
+		fclose(pf);
+	}
+}
+
 static void syslog_vprintf(int mask, const char* fmt, va_list args)
 {
 #ifdef WINDOWS
 	char buf[640];
 	int priority = log_level_comp(mask);
 	WORD wType;
+	LPCWSTR lpszStrings[2] = { NULL, NULL };
 
 	memset(buf, 0, sizeof(buf));
 	vsnprintf(buf, sizeof(buf) - 1, fmt, args);
 
-	switch (priority) {
-	case LOG_EMERG:
-	case LOG_ALERT:
-	case LOG_CRIT:
-	case LOG_ERR:
-		wType = EVENTLOG_ERROR_TYPE;
-		break;
-	case LOG_WARNING:
-		wType = EVENTLOG_WARNING_TYPE;
-		break;
-	case LOG_NOTICE:
-	case LOG_INFO:
-	case LOG_DEBUG:
-	default:
-		wType = EVENTLOG_INFORMATION_TYPE;
-		break;
-	}
+	//TODO: syslog_vprintf
 
-	ReportEvent(syslog_handle, wType, 0, 0, NULL, 1, 0, &buf, NULL);
 
 #else
 	char buf[640];
@@ -1456,16 +1450,12 @@ static void syslog_vprintf(int mask, const char* fmt, va_list args)
 static void open_syslog()
 {
 #ifdef WINDOWS
-	syslog_handle = RegisterEventSource(NULL, CLEANDNS_NAME);
-	if (!syslog_handle) {
-		loge("open_syslog(): cannot register event source");
-		exit(1);
-	}
+	is_use_syslog = 1;
 	log_vprintf = syslog_vprintf;
 	log_vprintf_with_timestamp = syslog_vprintf;
 #else
 	openlog(CLEANDNS_NAME, LOG_CONS | LOG_PID, LOG_DAEMON);
-	syslog_handle = 1;
+	is_use_syslog = 1;
 	log_vprintf = syslog_vprintf;
 	log_vprintf_with_timestamp = syslog_vprintf;
 #endif
@@ -1474,17 +1464,14 @@ static void open_syslog()
 static void close_syslog()
 {
 #ifdef WINDOWS
-	if (syslog_handle) {
+	if (is_use_syslog) {
+		is_use_syslog = 0;
 		log_vprintf = log_default_vprintf;
 		log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
-		if (!DeregisterEventSource(syslog_handle)) {
-			logw("close_syslog(): cannot deregister event source");
-		}
-		syslog_handle = NULL;
 	}
 #else
-	if (syslog_handle) {
-		syslog_handle = 0;
+	if (is_use_syslog) {
+		is_use_syslog = 0;
 		log_vprintf = log_default_vprintf;
 		log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
 		closelog();
@@ -1531,7 +1518,7 @@ static void ControlHandler(DWORD request)
 	case SERVICE_CONTROL_SHUTDOWN:
 		running = 0;
 		free_cleandns(s_cleandns);
-		if (syslog_handle) {
+		if (is_use_syslog) {
 			close_syslog();
 		}
 		ServiceStatus.dwCurrentState = SERVICE_STOPPED;
@@ -1550,6 +1537,9 @@ static void run_as_daemonize(cleandns_ctx* cleandns)
 {
 #ifdef WINDOWS
 	SERVICE_TABLE_ENTRY ServiceTable[2];
+
+	open_syslog();
+
 	ServiceTable[0].lpServiceName = CLEANDNS_NAME;
 	ServiceTable[0].lpServiceProc = (LPSERVICE_MAIN_FUNCTION)ServiceMain;
 
