@@ -25,7 +25,7 @@ extern void win_init();
 
 extern void win_uninit();
 
-// See https://support.microsoft.com/en-us/kb/263823
+/* See https://support.microsoft.com/en-us/kb/263823 */
 int disable_udp_connreset(SOCKET sockfd);
 
 #ifdef __cplusplus

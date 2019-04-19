@@ -105,7 +105,7 @@ BOOL WINAPI sig_handler(DWORD signo)
 #else
 static void sig_handler(int signo) {
 	if (signo == SIGINT)
-		exit(1);  // for gprof
+		exit(1);  /* for gprof*/
 	else
 		running = 0;
 }
@@ -1020,7 +1020,7 @@ static int setnonblock(sock_t sock)
 {
 #ifdef WINDOWS
 	int iResult;
-	// If iMode!=0, non-blocking mode is enabled.
+	/* If iMode!=0, non-blocking mode is enabled.*/
 	u_long iMode = 1;
 	iResult = ioctlsocket(sock, FIONBIO, &iMode);
 	if (iResult != NO_ERROR) {
@@ -1256,7 +1256,7 @@ static int parse_chnroute(cleandns_ctx *cleandns)
 	return 0;
 }
 
-//left trim
+/*left trim*/
 static char* ltrim(char* s)
 {
 	char *p = s;
@@ -1265,7 +1265,7 @@ static char* ltrim(char* s)
 	return p;
 }
 
-//right trim
+/*right trim*/
 static char* rtrim(char* s)
 {
 	int len;
@@ -1354,7 +1354,7 @@ static int read_config_file(cleandns_ctx* cleandns, const char *config_file, int
 			strncmp((ln = ltrim(ln + 6)), "cfg", 3) == 0 &&
 			(ln[3] == '\0' || isspace(ln[3]))) {
 			cnf_index++;
-			if (cnf_index > 0) //only parse first 'config cfg'
+			if (cnf_index > 0) /*only parse first 'config cfg'*/
 				break;
 			continue;
 		}
@@ -1428,7 +1428,7 @@ static int read_config_file(cleandns_ctx* cleandns, const char *config_file, int
 			}
 		}
 		else {
-			//do nothing
+			/*do nothing*/
 		}
 	}
 
