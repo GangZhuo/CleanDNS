@@ -1257,7 +1257,7 @@ static void ns_rdata_print_hinfo(ns_rr_t *rr)
 {
 	ns_hinfo_t *hinfo = rr->rdata;
 	if (hinfo) {
-		logn("CPU: %s, OS: %s\n",
+		logd("CPU: %s, OS: %s\n",
 			hinfo->cpu,
 			hinfo->os);
 	}
@@ -1268,7 +1268,7 @@ static void ns_rdata_print_minfo(ns_rr_t *rr)
 	ns_minfo_t *minfo = rr->rdata;
 
 	if (minfo) {
-		logn("RMAILBX: %s, EMAILBX: %s\n",
+		logd("RMAILBX: %s, EMAILBX: %s\n",
 			minfo->rmailbx,
 			minfo->emailbx);
 	}
@@ -1279,7 +1279,7 @@ static void ns_rdata_print_mx(ns_rr_t *rr)
 	ns_mx_t *mx = rr->rdata;
 
 	if (mx) {
-		logn("PREFERENCE: 0x%x, EXCHANGE: %s\n",
+		logd("PREFERENCE: 0x%x, EXCHANGE: %s\n",
 			(int)(mx->preference & 0xffff),
 			mx->exchange);
 	}
@@ -1290,7 +1290,7 @@ static void ns_rdata_print_soa(ns_rr_t *rr)
 	ns_soa_t *soa = rr->rdata;
 
 	if (soa) {
-		logn("MNAME: %s, RNAME: %s, SERIAL: 0x%x, REFRESH: 0x%x, RETRY: 0x%x, EXPIRE: 0x%x, MINIMUM: 0x%x\n",
+		logd("MNAME: %s, RNAME: %s, SERIAL: 0x%x, REFRESH: 0x%x, RETRY: 0x%x, EXPIRE: 0x%x, MINIMUM: 0x%x\n",
 			soa->mname,
 			soa->rname,
 			soa->serial,
@@ -1348,11 +1348,11 @@ static void ns_rdata_print_edns(ns_rr_t *rr)
 	int i;
 
 	if (opts != NULL) {
-        logn("OPTCOUNT: 0x%x\n", opts->optcount);
+		logd("OPTCOUNT: 0x%x\n", opts->optcount);
 		for (i = 0; i < opts->optcount; i++) {
 			opt = opts->opts + i;
 
-			logn("OPT-CODE: 0x%x, OPT-LEN: 0x%x, OPT-DATA:\n",
+			logd("OPT-CODE: 0x%x, OPT-LEN: 0x%x, OPT-DATA:\n",
 				(int)(opt->code & 0xffff),
 				(int)(opt->length & 0xffff));
 			if (opt->data != NULL) {
@@ -1361,7 +1361,7 @@ static void ns_rdata_print_edns(ns_rr_t *rr)
 					if (ns_parse_ect(&ecs, opt->data, opt->length)) {
 						char ipname[INET6_ADDRSTRLEN];
 						struct in_addr* addr = &ecs.subnet;
-						logn("ECS %s/%d SCOPE %d\n",
+						logd("ECS %s/%d SCOPE %d\n",
 							inet_ntop(AF_INET, addr, ipname, INET6_ADDRSTRLEN),
 							ecs.src_prefix_len,
 							ecs.scope_prefix_len);
@@ -1382,7 +1382,7 @@ static void ns_rdata_print_a(ns_rr_t *rr)
 {
 	char ipname[INET6_ADDRSTRLEN];
 	struct in_addr *addr = (struct in_addr *)rr->rdata;
-	logn("IPv4: %s\n", inet_ntop(AF_INET, addr, ipname, INET6_ADDRSTRLEN));
+	logd("IPv4: %s\n", inet_ntop(AF_INET, addr, ipname, INET6_ADDRSTRLEN));
 }
 
 static void ns_rdata_print_aaaa(ns_rr_t *rr)
@@ -1400,28 +1400,28 @@ static void ns_print_rdata(ns_rr_t *rr)
 		ns_rdata_print_hinfo(rr);
 		break;
 	case NS_TYPE_CNAME:
-		logn("CNAME: %s\n", rr->rdata);
+		logd("CNAME: %s\n", rr->rdata);
 		break;
 	case NS_TYPE_MB:
-		logn("MADNAME: %s\n", rr->rdata);
+		logd("MADNAME: %s\n", rr->rdata);
 		break;
 	case NS_TYPE_MD:
-		logn("MADNAME: %s\n", rr->rdata);
+		logd("MADNAME: %s\n", rr->rdata);
 		break;
 	case NS_TYPE_MF:
-		logn("MADNAME: %s\n", rr->rdata);
+		logd("MADNAME: %s\n", rr->rdata);
 		break;
 	case NS_TYPE_MG:
-		logn("MGMNAME: %s\n", rr->rdata);
+		logd("MGMNAME: %s\n", rr->rdata);
 		break;
 	case NS_TYPE_MR:
-		logn("NEWNAME: %s\n", rr->rdata);
+		logd("NEWNAME: %s\n", rr->rdata);
 		break;
 	case NS_TYPE_NS:
-		logn("NSDNAME: %s\n", rr->rdata);
+		logd("NSDNAME: %s\n", rr->rdata);
 		break;
 	case NS_TYPE_PTR:
-		logn("HOSTNAME: %s\n", rr->rdata);
+		logd("HOSTNAME: %s\n", rr->rdata);
 		break;
 	case NS_TYPE_MINFO:
 		ns_rdata_print_minfo(rr);
@@ -1456,8 +1456,8 @@ void ns_print(ns_msg_t *msg)
 	ns_qr_t *qr;
 	ns_rr_t *rr;
 
-	logn("<<< MSG START >>>\n");
-	logn("ID: 0x%x, FLAGS: 0x%x, QDCOUNT: 0x%x, ANCOUNT: 0x%x, NSCOUNT: 0x%x, ARCOUNT: 0x%x\n",
+	logd("<<< MSG START >>>\n");
+	logd("ID: 0x%x, FLAGS: 0x%x, QDCOUNT: 0x%x, ANCOUNT: 0x%x, NSCOUNT: 0x%x, ARCOUNT: 0x%x\n",
 		(int)(msg->id & 0xffff),
 		(int)(msg->flags & 0xffff),
 		(int)(msg->qdcount & 0xffff),
@@ -1467,7 +1467,7 @@ void ns_print(ns_msg_t *msg)
 
 	for (i = 0; i < msg->qdcount; i++) {
 		qr = msg->qrs + i;
-		logn("QNAME: %s, QTYPE: 0x%x (%s), QCLASS: 0x%x (%s)\n",
+		logd("QNAME: %s, QTYPE: 0x%x (%s), QCLASS: 0x%x (%s)\n",
 			qr->qname,
 			(int)(qr->qtype & 0xffff),
 			ns_typename(qr->qtype),
@@ -1479,7 +1479,7 @@ void ns_print(ns_msg_t *msg)
 		i < rrcount; i++) {
 		rr = msg->rrs + i;
 		if (rr->type == NS_QTYPE_OPT) {
-			logn("NAME: %s, TYPE: 0x%x (%s), PAYLOAD: 0x%x, RCODE: 0x%x, VERSION: 0x%x, Z: 0x%x, RDLEN: 0x%x\n",
+			logd("NAME: %s, TYPE: 0x%x (%s), PAYLOAD: 0x%x, RCODE: 0x%x, VERSION: 0x%x, Z: 0x%x, RDLEN: 0x%x\n",
 				rr->name,
 				(int)(rr->type & 0xffff),
 				ns_typename(rr->type),
@@ -1490,7 +1490,7 @@ void ns_print(ns_msg_t *msg)
 				(int)(rr->rdlength & 0xffff));
 		}
 		else {
-			logn("NAME: %s, TYPE: 0x%x (%s), CLASS: 0x%x (%s), TTL: 0x%x, RDLEN: 0x%x\n",
+			logd("NAME: %s, TYPE: 0x%x (%s), CLASS: 0x%x (%s), TTL: 0x%x, RDLEN: 0x%x\n",
 				rr->name,
 				(int)(rr->type & 0xffff),
 				ns_typename(rr->type),
@@ -1501,7 +1501,7 @@ void ns_print(ns_msg_t *msg)
 		}
 		ns_print_rdata(rr);
 	}
-	logn("<<< MSG END >>>\n\n");
+	logd("<<< MSG END >>>\n\n");
 }
 
 const char *ns_typename(uint16_t type)
