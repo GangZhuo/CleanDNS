@@ -38,7 +38,22 @@ Non-polluting DNS. Support ECS (edns-client-subnet).
 	
 	# Start|Stop|Restart|Enable|Disable
 	/etc/init.d/cleandns [start|stop|restart|enable|disable]
-	
+
+### Install (Windows)
+
+    1) Download source code from https://github.com/GangZhuo/CleanDNS.
+    
+    2) Open CleanDNS/windows/cleandns.sln with visual studio 2019, build project.
+    
+    3) Copy build result (cleandns.exe) with CleanDNS/windows/install_service.bat and CleanDNS/windows/uninstall_service.bat to target directory (e.g. D:\CleanDNS\).
+    
+    4) Right click D:\CleanDNS\install_service.bat, and click Run as administrator to install CleanDNS as service.
+    
+    5) Edit your config file D:\CleanDNS\cleandns.config， which should be generate automatic after installed service.
+    
+    6) Press WIN+R, type 'services.msc', and press <Enter>， Start/Restart CleanDNS on right panel.
+    
+    7) Right click D:\CleanDNS\uninstall_service.bat, and click Run as administrator to uninstall.	
 	
 ### Usage
 
