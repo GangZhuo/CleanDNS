@@ -1620,6 +1620,18 @@ static int init_cleandns(cleandns_ctx *cleandns)
 	return 0;
 }
 
+static int cb_free_req(rbtree_t* tree, rbnode_t* x, void* state)
+{
+	req_t* req = x->info;
+
+	if (req) {
+		free_req(req);
+		x->info = NULL;
+	}
+
+	return 0;
+}
+
 static void free_cleandns(cleandns_ctx *cleandns)
 {
 	int i;
@@ -1631,6 +1643,7 @@ static void free_cleandns(cleandns_ctx *cleandns)
 		close(cleandns->listen_sock);
 	if (cleandns->remote_sock)
 		close(cleandns->remote_sock);
+
 	free(cleandns->listen_addr);
 	free(cleandns->listen_port);
 	free(cleandns->dns_server);
@@ -1644,6 +1657,8 @@ static void free_cleandns(cleandns_ctx *cleandns)
 		dns_server_t* dns_server = cleandns->dns_servers + i;
 		freeaddrinfo(dns_server->addr);
 	}
+
+	rbtree_each(&cleandns->queue, cb_free_req, NULL);
 
 	rbtree_free(&cleandns->queue);
 }
