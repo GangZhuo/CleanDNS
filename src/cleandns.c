@@ -1205,6 +1205,10 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 		int partly_recv = 0;
 		int msglen = 0;
 
+		if (loglevel > LOG_DEBUG) {
+			logd("recv %d bytes (TCP)\n", nread);
+		}
+
 		conn->recvbuf_size += nread;
 
 		if (conn->recvbuf_size > 2) {
@@ -1271,6 +1275,11 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 	else {
 		int err = errno;
 		if (is_eagain(err)) {
+
+			if (loglevel > LOG_DEBUG) {
+				logd("recv() EAGAIN (TCP)\n");
+			}
+
 			return 0;
 		}
 		else {
@@ -1371,15 +1380,24 @@ static int tcp_send(conn_t* conn)
 			loge("tcp_send() error: %s \n", strerror(err));
 			return -1;
 		}
+		if (loglevel > LOG_DEBUG) {
+			logd("send() EAGAIN (TCP)\n");
+		}
 		return 0;
 	}
 	else if (nsend < conn->sendbuf_size) {
+		if (loglevel > LOG_DEBUG) {
+			logd("partly send %d bytes (TCP)\n", nsend);
+		}
 		/* partly sent, move memory, wait for the next time to send */
 		memmove(conn->sendbuf, conn->sendbuf + nsend, conn->sendbuf_size - nsend);
 		conn->sendbuf_size -= nsend;
 		return nsend;
 	}
 	else {
+		if (loglevel > LOG_DEBUG) {
+			logd("send %d bytes (TCP)\n", nsend);
+		}
 		free(conn->sendbuf);
 		conn->sendbuf = NULL;
 		conn->sendbuf_size = 0;
