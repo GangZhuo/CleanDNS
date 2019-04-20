@@ -7,7 +7,7 @@
 log_vprintf_fun log_vprintf = log_default_vprintf;
 log_vprintf_fun log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
 
-static int s_log_level = LOG_NOTICE;
+static int s_log_level = LOG_DEFAULT_LEVEL;
 static int s_log_flags = LOG_FLG_TIME;
 
 static const char *prioritynames[] = {

@@ -8,6 +8,9 @@
 extern "C" {
 #endif
 
+#define ___I2STR1(R)  #R
+#define I2STR(R)  ___I2STR1(R)
+
 /* priorities (same syslog.h) */
 #define	LOG_EMERG		0	/* system is unusable */
 #define	LOG_ALERT		1	/* action must be taken immediately */
@@ -23,6 +26,10 @@ extern "C" {
 #define LOG_MASK_RAW	(1 << 8) /* log raw message */
 
 #define LOG_TIMEFORMAT "%Y-%m-%d %H:%M:%S"
+
+#define LOG_DEFAULT_LEVEL		LOG_NOTICE
+
+#define LOG_DEFAULT_LEVEL_NAME	I2STR(LOG_NOTICE)
 
 typedef void (*log_vprintf_fun)(int mask, const char* fmt, va_list args);
 

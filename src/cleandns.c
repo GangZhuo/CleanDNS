@@ -85,6 +85,8 @@ static int parse_netmask(net_mask_t *netmask, char *line);
 static void run_as_daemonize(cleandns_ctx* cleandns);
 static void open_syslog();
 static void close_syslog();
+static void open_logfile();
+static void close_logfile();
 
 #ifdef WINDOWS
 BOOL WINAPI sig_handler(DWORD signo)
@@ -150,6 +152,12 @@ int main(int argc, char **argv)
 	if (resolve_dns_server(&cleandns) != 0)
 		return EXIT_FAILURE;
 
+	log_file = cleandns.log_file;
+
+	if (log_file) {
+		open_logfile();
+	}
+
 	if (cleandns.compression) {
 		int i;
 		struct sockaddr_in* dns_addr;
@@ -184,9 +192,11 @@ int main(int argc, char **argv)
 #endif
 
 	if (cleandns.daemonize) {
+#ifndef WINDOWS
 		if (!cleandns.pid_file) {
 			cleandns.pid_file = strdup(DEFAULT_PID_FILE);
 		}
+#endif
 		run_as_daemonize(&cleandns);
 	}
 
@@ -205,7 +215,10 @@ int main(int argc, char **argv)
 
 	free_cleandns(&cleandns);
 
-	if (is_use_syslog) {
+	if (log_file) {
+		close_logfile();
+	}
+	else if (is_use_syslog) {
 		close_syslog();
 	}
 
@@ -223,10 +236,13 @@ static void print_args(cleandns_ctx* cleandns)
 	logn("compression: %s\n", cleandns->compression ? "on" : "off");
 	logn("timeout: %d\n", cleandns->timeout);
 	logn("loglevel: %d\n", loglevel);
+#ifndef WINDOWS
 	if (cleandns->daemonize) {
 		logn("pid file: %s\n", cleandns->pid_file);
 	}
-	logn("log_file: %s\n", cleandns->log_file);
+#endif
+	if (cleandns->log_file)
+		logn("log_file: %s\n", cleandns->log_file);
 
 	if (loglevel >= LOG_INFO && cleandns->compression) {
 		int i;
@@ -245,7 +261,7 @@ static void print_args(cleandns_ctx* cleandns)
 static int do_loop(cleandns_ctx *cleandns)
 {
 	fd_set readset, errorset;
-	int max_fd;
+	sock_t max_fd;
 
 	running = 1;
 	max_fd = MAX(cleandns->listen_sock, cleandns->remote_sock) + 1;
@@ -1443,10 +1459,11 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 	int option_index = 0;
 	const char *config_file = NULL;
 	static struct option long_options[] = {
-		{"daemon", no_argument,       NULL, 1},
-		{"pid",    required_argument, NULL, 2},
-		{"log",    required_argument, NULL, 3},
-		{"config", required_argument, NULL, 4},
+		{"daemon",   no_argument,       NULL, 1},
+		{"pid",      required_argument, NULL, 2},
+		{"log",      required_argument, NULL, 3},
+		{"log-level",required_argument, NULL, 4},
+		{"config",   required_argument, NULL, 5},
 		{0, 0, 0, 0}
 	};
 
@@ -1464,6 +1481,9 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 			cleandns->log_file = strdup(optarg);
 			break;
 		case 4:
+			loglevel = atoi(optarg);
+			break;
+		case 5:
 			config_file = optarg;
 			break;
 		case 'h':
@@ -1595,21 +1615,22 @@ usage: cleandns [-h] [-l CHINA_IP] [-f FOREIGN_IP] [-b BIND_ADDR]\n\
 \n\
 Forward DNS requests.\n\
 \n\
-  -l CHINA_IP          china ip address, e.g. 114.114.114.114/24.\n\
-  -f FOREIGN_IP        foreign ip address, e.g. 8.8.8.8/24.\n\
-  -c CHNROUTE_FILE     path to china route file, default: " DEFAULT_CHNROUTE_FILE ".\n\
-  -b BIND_ADDR         address that listens, default: " DEFAULT_LISTEN_ADDR ".\n\
-  -p BIND_PORT         port that listens, default: " DEFAULT_LISTEN_PORT ".\n\
-  -s DNS               DNS server to use, default: " DEFAULT_DNS_SERVER ".\n\
-  -m                   use DNS compression pointer mutation, only avalidate on foreign dns server.\n\
-  -t                   timeout, default: " DEFAULT_TIMEOUT ".\n\
-  --daemon             daemonize.\n\
-  --pid=PID_FILE_PATH  pid file, default: " DEFAULT_PID_FILE ", only avalidate on daemonize.\n\
-  --log=LOG_FILE_PATH  log file, only avalidate on daemonize.\n\
-  --config=CONFIG_PATH config file.\n\
-  -v                   verbose logging.\n\
-  -h                   show this help message and exit.\n\
-  -V                   print version and exit.\n\
+  -l CHINA_IP           china ip address, e.g. 114.114.114.114/24.\n\
+  -f FOREIGN_IP         foreign ip address, e.g. 8.8.8.8/24.\n\
+  -c CHNROUTE_FILE      path to china route file, default: " DEFAULT_CHNROUTE_FILE ".\n\
+  -b BIND_ADDR          address that listens, default: " DEFAULT_LISTEN_ADDR ".\n\
+  -p BIND_PORT          port that listens, default: " DEFAULT_LISTEN_PORT ".\n\
+  -s DNS                DNS server to use, default: " DEFAULT_DNS_SERVER ".\n\
+  -m                    use DNS compression pointer mutation, only avalidate on foreign dns server.\n\
+  -t                    timeout, default: " DEFAULT_TIMEOUT ".\n\
+  --daemon              daemonize.\n\
+  --pid=PID_FILE_PATH   pid file, default: " DEFAULT_PID_FILE ", only avalidate on daemonize.\n\
+  --log=LOG_FILE_PATH   log file, only avalidate on daemonize.\n\
+  --log-level=LOG_LEVEL log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
+  --config=CONFIG_PATH  config file.\n\
+  -v                    verbose logging.\n\
+  -h                    show this help message and exit.\n\
+  -V                    print version and exit.\n\
 \n\
 Online help: <https://github.com/GangZhuo/CleanDNS>\n");
 }
@@ -1634,17 +1655,17 @@ static void syslog_writefile(int mask, const char* fmt, va_list args)
 	memset(buf2, 0, sizeof(buf2));
 
 	if (extra_msg && strlen(extra_msg)) {
-		len = vsnprintf(buf2, sizeof(buf2) - 1, "%s [%s] %s", date, extra_msg, buf);
+		len = snprintf(buf2, sizeof(buf2) - 1, "%s [%s] %s", date, extra_msg, buf);
 	}
 	else {
-		len = vsnprintf(buf2, sizeof(buf2) - 1, "%s %s", date, buf);
+		len = snprintf(buf2, sizeof(buf2) - 1, "%s %s", date, buf);
 	}
 
 	if (len > 0) {
 		FILE* pf;
 		pf = fopen(log_file, "a+");
 		if (pf) {
-			fwrite(buf, 1, len, pf);
+			fwrite(buf2, 1, len, pf);
 			fclose(pf);
 		}
 		else {
@@ -1667,46 +1688,47 @@ static void syslog_vprintf(int mask, const char* fmt, va_list args)
 #endif
 }
 
-static void open_syslog()
+static void open_logfile()
 {
 	if (log_file) {
-		is_use_syslog = 1;
 		log_vprintf = syslog_writefile;
 		log_vprintf_with_timestamp = syslog_writefile;
 	}
-	else {
-#ifdef WINDOWS
-		logw("use_syslog(): not implemented in Windows port");
-#else
-		openlog(CLEANDNS_NAME, LOG_CONS | LOG_PID, LOG_DAEMON);
-		is_use_syslog = 1;
-		log_vprintf = syslog_vprintf;
-		log_vprintf_with_timestamp = syslog_vprintf;
-#endif
+}
+
+static void close_logfile()
+{
+	if (log_file) {
+		log_vprintf = log_default_vprintf;
+		log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
+		log_file = NULL;
 	}
+}
+
+static void open_syslog()
+{
+#ifdef WINDOWS
+	logw("use_syslog(): not implemented in Windows port");
+#else
+	openlog(CLEANDNS_NAME, LOG_CONS | LOG_PID, LOG_DAEMON);
+	is_use_syslog = 1;
+	log_vprintf = syslog_vprintf;
+	log_vprintf_with_timestamp = syslog_vprintf;
+#endif
 }
 
 static void close_syslog()
 {
-	if (log_file) {
-		if (is_use_syslog) {
-			is_use_syslog = 0;
-			log_vprintf = log_default_vprintf;
-			log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
-		}
-	}
-	else {
 #ifdef WINDOWS
-		logw("close_syslog(): not implemented in Windows port");
+	logw("close_syslog(): not implemented in Windows port");
 #else
-		if (is_use_syslog) {
-			is_use_syslog = 0;
-			log_vprintf = log_default_vprintf;
-			log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
-			closelog();
-		}
-#endif
+	if (is_use_syslog) {
+		is_use_syslog = 0;
+		log_vprintf = log_default_vprintf;
+		log_vprintf_with_timestamp = log_default_vprintf_with_timestamp;
+		closelog();
 	}
+#endif
 }
 
 #ifdef WINDOWS
@@ -1768,19 +1790,11 @@ static void run_as_daemonize(cleandns_ctx* cleandns)
 #ifdef WINDOWS
 	SERVICE_TABLE_ENTRY ServiceTable[2];
 
-	log_file = cleandns->log_file;
-
-	open_syslog();
-
 	ServiceTable[0].lpServiceName = CLEANDNS_NAME;
 	ServiceTable[0].lpServiceProc = (LPSERVICE_MAIN_FUNCTION)ServiceMain;
 
 	ServiceTable[1].lpServiceName = NULL;
 	ServiceTable[1].lpServiceProc = NULL;
-
-	if (cleandns->pid_file) {
-		logw("run_as_daemonize(): 'pid file' not implemented in Windows port");
-	}
 
 	if (!StartServiceCtrlDispatcher(ServiceTable)) {
 		loge("run_as_daemonize(): cannot start service ctrl dispatcher");
@@ -1810,9 +1824,9 @@ static void run_as_daemonize(cleandns_ctx* cleandns)
 
 	umask(0);
 
-	log_file = cleandns->log_file;
-
-	open_syslog();
+	if (!log_file) {
+		open_syslog();
+	}
 
 	sid = setsid();
 	if (sid < 0) {
