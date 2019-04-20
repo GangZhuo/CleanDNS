@@ -442,6 +442,7 @@ static void print_response(cleandns_ctx* cleandns, ns_msg_t *msg, struct sockadd
 static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 	int compression, subnet_t *subnet,
 	sock_t sock, struct sockaddr *to, socklen_t tolen,
+	req_t *req,
 	int dns_server_index)
 {
 	stream_t s = STREAM_INIT();
@@ -526,7 +527,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 			msg->id = (uint16_t)(req->id + i);
 			if (send_nsmsg(cleandns, msg, dns_server->is_foreign, NULL,
 				cleandns->remote_sock, dns_server->addr->ai_addr,
-				dns_server->addr->ai_addrlen, i) != 0) {
+				dns_server->addr->ai_addrlen, req, i) != 0) {
 				loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
 			}
 			else {
@@ -542,7 +543,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 				msg->id = (uint16_t)(req->id + i);
 				if (send_nsmsg(cleandns, msg, dns_server->is_foreign, &cleandns->china_net,
 					cleandns->remote_sock, dns_server->addr->ai_addr,
-					dns_server->addr->ai_addrlen, i) != 0) {
+					dns_server->addr->ai_addrlen, req, i) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
 				}
 				else {
@@ -557,7 +558,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 				msg->id = (uint16_t)(req->id + cleandns->dns_server_num + i);
 				if (send_nsmsg(cleandns, msg, dns_server->is_foreign, &cleandns->foreign_net,
 					cleandns->remote_sock, dns_server->addr->ai_addr,
-					dns_server->addr->ai_addrlen, i) != 0) {
+					dns_server->addr->ai_addrlen, req, i) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'foreign_ip'.\n");
 				}
 				else {
@@ -853,7 +854,7 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 		best->id = req->old_id;
 
 		if (send_nsmsg(cleandns, best, 0, NULL, cleandns->listen_sock,
-			(struct sockaddr*)(&req->addr), req->addrlen, -1) != 0) {
+			(struct sockaddr*)(&req->addr), req->addrlen, req, -1) != 0) {
 			loge("response_best_nsmsg: failed to send answers to '%s'\n",
 				get_addrname((struct sockaddr*)(&req->addr)));
 		}
