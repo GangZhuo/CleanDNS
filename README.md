@@ -1,6 +1,6 @@
 # CleanDNS
 
-Non-polluting DNS. Support ECS (edns-client-subnet).
+Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
 
 #### Appveyor
 
@@ -28,7 +28,9 @@ Non-polluting DNS. Support ECS (edns-client-subnet).
 	
     make menuconfig                            # Select Network/CleanDNS
 	
-    make V=99 package/CleanDNS/openwrt/compile # Output file at OpenWrt-SDK-***/bin/packages/<arch>/base/CleanDNS-*.ipk
+    make V=99 package/CleanDNS/openwrt/compile
+    
+    # Output file should be at OpenWrt-SDK-***/bin/packages/<arch>/base/CleanDNS-*.ipk
     
 	# Install on OpenWrt
     opkg install CleanDNS_*.ipk
@@ -45,11 +47,15 @@ Non-polluting DNS. Support ECS (edns-client-subnet).
     
     2) Open CleanDNS/windows/cleandns.sln with visual studio 2019, build project.
     
-    3) Copy build result (cleandns.exe) with CleanDNS/windows/install_service.bat and CleanDNS/windows/uninstall_service.bat to target directory (e.g. D:\CleanDNS\).
+    3) Copy build result (cleandns.exe) with CleanDNS/windows/install_service.bat,
+       CleanDNS/windows/uninstall_service.bat and chnroute.txt to target directory
+       (e.g. D:\CleanDNS\).
     
-    4) Right click D:\CleanDNS\install_service.bat, and click Run as administrator to install CleanDNS as service.
+    4) Right click D:\CleanDNS\install_service.bat, and click Run as administrator
+       to install CleanDNS as service.
     
-    5) Edit your config file D:\CleanDNS\cleandns.config， which should be generate automatic after installed service.
+    5) Edit your config file D:\CleanDNS\cleandns.config， which should be generate
+       automatic after installed service.
     
     6) Press WIN+R, type 'services.msc', and press <Enter>， Start/Restart CleanDNS on right panel.
     
