@@ -22,6 +22,7 @@ void stream_free(stream_t *stream)
 {
 	if (stream != NULL) {
 		free(stream->array);
+		memset(stream, 0, sizeof(stream_t));
 	}
 }
 
