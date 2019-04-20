@@ -101,7 +101,7 @@ static int parse_chnroute(cleandns_ctx *cleandns);
 static int test_ip_in_list(struct in_addr *ip, const net_list_t *netlist);
 static int resolve_dns_server(cleandns_ctx *cleandns);
 static int init_sockets(cleandns_ctx *cleandns);
-static int connect_server(conn_t* conn, dns_server_t* server, int *connected);
+static int connect_server(conn_t* conn, dns_server_t* server);
 static int tcp_send(cleandns_ctx* cleandns, conn_t* conn);
 static int do_loop(cleandns_ctx *cleandns);
 static int handle_listen_sock(cleandns_ctx *cleandns);
@@ -407,9 +407,16 @@ static int do_loop(cleandns_ctx *cleandns)
 					}
 
 					if (FD_ISSET(conn->sock, &writeset)) {
+						if (!conn->connected) {
+							dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
+							conn->connected = 1;
+							logd("connected to '%s' (TCP)(sock=%d)\n",
+								get_addrname(dns_server->addr->ai_addr), conn->sock);
+						}
 						if (tcp_send(cleandns, conn) == -1) {
+							dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
 							loge("do_loop(): cannot send data to '%s' (TCP)\n",
-								get_addrname(cleandns->dns_servers[conn->dns_server_index].addr->ai_addr));
+								get_addrname(dns_server->addr->ai_addr));
 							free_conn(conn);
 						}
 					}
@@ -657,7 +664,6 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 
 	logd("send data%s:\n", is_tcp ? " (TCP)" : "");
 	bprint(s.array, s.size);
-	logd("\n");
 
 	if (is_tcp) {
 		if (req->conn_num >= MAX_NS_MSG) {
@@ -686,7 +692,8 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 			}
 		}
 		else {
-			logd("send_nsmsg: waiting '%s' connected (TCP)\n", get_addrname(dns_server->addr->ai_addr));
+			logd("send_nsmsg: connecting '%s' ... (TCP)(sock=%d)\n",
+				get_addrname(dns_server->addr->ai_addr), conn->sock);
 		}
 	}
 	else {
@@ -831,7 +838,6 @@ static int handle_listen_sock(cleandns_ctx *cleandns)
 
 		logd("request data:\n");
 		bprint(cleandns->buf, len);
-		logd("\n");
 
 		if (handle_listen_sock_recv(cleandns, req, len) != 0) {
            loge("handle_listen_sock: handle_listen_sock_recv()\n");
@@ -1163,7 +1169,6 @@ static int handle_remote_sock(cleandns_ctx *cleandns)
 
 		logd("response data:\n");
 		bprint(cleandns->buf, len);
-		logd("\n");
 
 		if (handle_remote_sock_recv(cleandns, cleandns->buf, len, (struct sockaddr *)&from_addr) != 0) {
            loge("handle_remote_sock: handle_remote_sock_recv() error\n");
@@ -1225,7 +1230,6 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 
 				logd("response data (TCP):\n");
 				bprint(conn->recvbuf + 2, msglen);
-				logd("\n");
 
 				if (handle_remote_sock_recv(cleandns, conn->recvbuf + 2, msglen, dns_server->addr->ai_addr) != 0) {
 					loge("handle_remote_tcpsock: handle_remote_sock_recv() error\n");
@@ -1379,14 +1383,16 @@ static int tcp_send(cleandns_ctx* cleandns, conn_t* conn)
 		return 0;
 	}
 	else if (nsend < conn->sendbuf_size) {
-		logd("partly send %d bytes to '%s' (TCP)\n", nsend, get_addrname(dns_server->addr->ai_addr));
+		logd("partly send %d bytes to '%s' (TCP)(sock=%d)\n",
+			nsend, get_addrname(dns_server->addr->ai_addr), conn->sock);
 		/* partly sent, move memory, wait for the next time to send */
 		memmove(conn->sendbuf, conn->sendbuf + nsend, conn->sendbuf_size - nsend);
 		conn->sendbuf_size -= nsend;
 		return 0;
 	}
 	else {
-		logd("send %d bytes to '%s' (TCP)\n", nsend, get_addrname(dns_server->addr->ai_addr));
+		logd("send %d bytes to '%s' (TCP)(sock=%d)\n",
+			nsend, get_addrname(dns_server->addr->ai_addr), conn->sock);
 		free(conn->sendbuf);
 		conn->sendbuf = NULL;
 		conn->sendbuf_size = 0;
@@ -1394,11 +1400,9 @@ static int tcp_send(cleandns_ctx* cleandns, conn_t* conn)
 	}
 }
 
-static int connect_server(conn_t *conn, dns_server_t *server, int* connected)
+static int connect_server(conn_t *conn, dns_server_t *server)
 {
 	sock_t sock;
-
-	(*connected) = 0;
 
 	sock = socket(server->addr->ai_family, SOCK_STREAM, IPPROTO_TCP);
 	if (sock == -1) {
@@ -1423,8 +1427,11 @@ static int connect_server(conn_t *conn, dns_server_t *server, int* connected)
 		return -1;
 	}
 
-	(*connected) = 1;
+	conn->connected = 1;
 	conn->sock = sock;
+
+	logd("connected to '%s' (TCP)(sock=%d)\n",
+		get_addrname(server->addr->ai_addr), conn->sock);
 
 	return 0;
 }

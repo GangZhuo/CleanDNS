@@ -1501,7 +1501,7 @@ void ns_print(ns_msg_t *msg)
 		}
 		ns_print_rdata(rr);
 	}
-	logd("<<< MSG END >>>\n\n");
+	logd("<<< MSG END >>>\n");
 }
 
 const char *ns_typename(uint16_t type)

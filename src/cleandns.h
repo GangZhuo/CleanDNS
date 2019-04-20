@@ -24,6 +24,7 @@ extern "C" {
 
 typedef struct conn_t {
 	sock_t sock;
+	int connected;
 	int dns_server_index;
 	char* sendbuf;
 	int sendbuf_size;
