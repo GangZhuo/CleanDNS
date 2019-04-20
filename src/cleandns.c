@@ -330,7 +330,7 @@ static int do_loop(cleandns_ctx *cleandns)
 		FD_ZERO(&writeset);
 		FD_ZERO(&errorset);
 
-		max_fd = MAX(cleandns->listen_sock, cleandns->remote_sock) + 1;
+		max_fd = MAX(cleandns->listen_sock, cleandns->remote_sock);
 
 		FD_SET(cleandns->listen_sock, &readset);
 		FD_SET(cleandns->listen_sock, &errorset);
@@ -365,7 +365,7 @@ static int do_loop(cleandns_ctx *cleandns)
 			}
 		}
 
-		if (select(max_fd, &readset, &writeset, &errorset, &timeout) == -1) {
+		if (select(max_fd + 1, &readset, &writeset, &errorset, &timeout) == -1) {
 			loge("do_loop(): select error\n");
 			return -1;
 		}
