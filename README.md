@@ -1,6 +1,6 @@
 # CleanDNS
 
-Non-polluting DNS. Support ECS (edns-client-subnet).
+Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
 
 #### Appveyor
 
