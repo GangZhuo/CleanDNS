@@ -28,4 +28,6 @@ sc create "%SERVICE_NAME%" binpath= "\"%CURR_PATH%cleandns.exe\" --daemon --conf
 
 sc description "%SERVICE_NAME%" "%SERVICE_DESCRIPTION%"
 
+pause
+
 @echo on
