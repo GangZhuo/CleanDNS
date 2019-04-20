@@ -1431,6 +1431,11 @@ static int read_config_file(cleandns_ctx* cleandns, const char *config_file, int
 					strcmp(value, "enabled") == 0;
 			}
 		}
+		else if (strcmp(name, "timeout") == 0) {
+			if (force || cleandns->timeout <= 0) {
+				cleandns->timeout = atoi(value);
+			}
+		}
 		else if (strcmp(name, "pid_file") == 0) {
 			if (force || !cleandns->pid_file) {
 				if (cleandns->pid_file) free(cleandns->pid_file);
@@ -1441,6 +1446,11 @@ static int read_config_file(cleandns_ctx* cleandns, const char *config_file, int
 			if (force || !cleandns->log_file) {
 				if (cleandns->log_file) free(cleandns->log_file);
 				cleandns->log_file = strdup(value);
+			}
+		}
+		else if (strcmp(name, "log_level") == 0) {
+			if (force || loglevel == LOG_DEFAULT_LEVEL) {
+				loglevel = atoi(value);
 			}
 		}
 		else {
@@ -1462,7 +1472,7 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 		{"daemon",   no_argument,       NULL, 1},
 		{"pid",      required_argument, NULL, 2},
 		{"log",      required_argument, NULL, 3},
-		{"log-level",required_argument, NULL, 4},
+		{"log_level",required_argument, NULL, 4},
 		{"config",   required_argument, NULL, 5},
 		{0, 0, 0, 0}
 	};
@@ -1626,7 +1636,7 @@ Forward DNS requests.\n\
   --daemon              daemonize.\n\
   --pid=PID_FILE_PATH   pid file, default: " DEFAULT_PID_FILE ", only avalidate on daemonize.\n\
   --log=LOG_FILE_PATH   log file, only avalidate on daemonize.\n\
-  --log-level=LOG_LEVEL log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
+  --log_level=LOG_LEVEL log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
   --config=CONFIG_PATH  config file.\n\
   -v                    verbose logging.\n\
   -h                    show this help message and exit.\n\
