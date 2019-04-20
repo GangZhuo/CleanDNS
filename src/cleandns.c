@@ -46,14 +46,23 @@
 
 #define MAX(a, b) (((a) < (b)) ? (b) : (a))
 
+#ifndef EWOULDBLOCK
+#define EWOULDBLOCK EAGAIN
+#endif
+
+#ifndef EINPROGRESS
+#define EINPROGRESS EAGAIN
+#endif
+
 #ifndef WSAEWOULDBLOCK
-#define WSAEWOULDBLOCK EWOULDBLOCK
+#define WSAEWOULDBLOCK EINPROGRESS
 #endif
 
 #define fix_reqid(pid, num) ((*pid) = ((*pid) / (2 * (num))) * (num) * 2)
 #define ext_num(msgid, num) ((msgid) - (((msgid) / (2 * num) ) * (num) * 2))
 #define is_foreign(msgid, num) (ext_num((msgid), (num)) >= (num))
 #define dns_index(msgid, num) ((ext_num((msgid), (num)) >= (num)) ? (ext_num((msgid), (num)) - (num)) : (ext_num((msgid), (num))))
+#define is_eagain(err) ((err) == EAGAIN || (err) == EINPROGRESS || (err) == EWOULDBLOCK || (err) == WSAEWOULDBLOCK)
 
 typedef struct {
 	time_t now;
@@ -1261,9 +1270,14 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 	}
 	else {
 		int err = errno;
-		loge("handle_remote_tcpsock: %d %s\n", err, strerror(err));
-		free_conn(conn);
-		return -1;
+		if (is_eagain(err)) {
+			return 0;
+		}
+		else {
+			loge("handle_remote_tcpsock: %d %s\n", err, strerror(err));
+			free_conn(conn);
+			return -1;
+		}
 	}
 }
 
@@ -1353,7 +1367,7 @@ static int tcp_send(conn_t* conn)
 	nsend = send(conn->sock, conn->sendbuf, conn->sendbuf_size, 0);
 	if (nsend == -1) {
 		int err = errno;
-		if (err != EAGAIN && err != EWOULDBLOCK && err != WSAEWOULDBLOCK) {
+		if (!is_eagain(err)) {
 			loge("tcp_send() error: %s \n", strerror(err));
 			return -1;
 		}
@@ -1392,7 +1406,7 @@ static int connect_server(conn_t *conn, dns_server_t *server, int* connected)
 
 	if (connect(sock, server->addr->ai_addr, server->addr->ai_addrlen) != 0) {
 		int err = errno;
-		if (err == EAGAIN || err == EWOULDBLOCK || err == WSAEWOULDBLOCK) {
+		if (is_eagain(err)) {
 			conn->sock = sock;
 			return 0;
 		}
