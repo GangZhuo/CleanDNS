@@ -52,6 +52,11 @@ typedef struct net_list_t {
 	net_mask_t *nets;
 } net_list_t;
 
+typedef struct dns_server_t {
+	struct addrinfo* addr;
+	int is_foreign;
+} dns_server_t;
+
 typedef struct cleandns_ctx {
 	char *listen_addr;
 	char *listen_port;
@@ -65,8 +70,7 @@ typedef struct cleandns_ctx {
 	char* log_file;
 	int daemonize;
 	net_list_t chnroute_list;
-	struct addrinfo *dns_server_addr[MAX_DNS_SERVER];
-	int is_foreign_dns[MAX_DNS_SERVER];
+	dns_server_t dns_servers[MAX_DNS_SERVER];
 	int dns_server_num;
 	subnet_t china_net;
 	subnet_t foreign_net;

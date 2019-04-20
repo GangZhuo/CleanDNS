@@ -60,12 +60,15 @@ static int is_use_syslog = 0;
 static const char* log_file = NULL;
 
 #ifdef WINDOWS
+
 static cleandns_ctx* s_cleandns = NULL;
 static SERVICE_STATUS ServiceStatus = { 0 };
 static SERVICE_STATUS_HANDLE hStatus = NULL;
 
 static void ServiceMain(int argc, char** argv);
 static void ControlHandler(DWORD request);
+#define strdup(s) _strdup(s)
+
 #endif
 
 static void usage();
@@ -160,18 +163,19 @@ int main(int argc, char **argv)
 
 	if (cleandns.compression) {
 		int i;
+		dns_server_t* dns_server;
 		struct sockaddr_in* dns_addr;
 		struct in_addr* dns_ip;
 		for (i = 0; i < cleandns.dns_server_num; i++) {
-			dns_addr = (struct sockaddr_in*)
-				cleandns.dns_server_addr[i]->ai_addr;
+			dns_server = cleandns.dns_servers + i;
+			dns_addr = (struct sockaddr_in*)dns_server->addr->ai_addr;
 			dns_ip = (struct in_addr*)&dns_addr->sin_addr;
 			/* only foreign dns server need compression*/
 			if (!test_ip_in_list(dns_ip, &cleandns.chnroute_list)) {
-				cleandns.is_foreign_dns[i] = 1;
+				dns_server->is_foreign = 1;
 			}
 			else {
-				cleandns.is_foreign_dns[i] = 0;
+				dns_server->is_foreign = 0;
 			}
 		}
 	}
@@ -246,12 +250,14 @@ static void print_args(cleandns_ctx* cleandns)
 
 	if (loglevel >= LOG_INFO && cleandns->compression) {
 		int i;
+		dns_server_t* dns_server;
 		struct sockaddr_in* dns_addr;
 		logi("\n");
 		for (i = 0; i < cleandns->dns_server_num; i++) {
-			dns_addr = (struct sockaddr_in*) cleandns->dns_server_addr[i]->ai_addr;
+			dns_server = cleandns->dns_servers + i;
+			dns_addr = (struct sockaddr_in*)dns_server->addr->ai_addr;
 			logi("compression %s on %s\n",
-				cleandns->is_foreign_dns[i] ? "enabled" : "disabled",
+				dns_server->is_foreign ? "enabled" : "disabled",
 				get_addrname((struct sockaddr*)dns_addr));
 		}
 		logi("\n");
@@ -435,7 +441,8 @@ static void print_response(cleandns_ctx* cleandns, ns_msg_t *msg, struct sockadd
 
 static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 	int compression, subnet_t *subnet,
-	sock_t sock, struct sockaddr *to, socklen_t tolen)
+	sock_t sock, struct sockaddr *to, socklen_t tolen,
+	int dns_server_index)
 {
 	stream_t s = STREAM_INIT();
 	int len;
@@ -506,6 +513,7 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, req_t *req)
 {
 	int i;
+	dns_server_t* dns_server;
 
 	if (loglevel >= LOG_DEBUG) {
 		logd("request msg:\n");
@@ -514,10 +522,11 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 
 	if (cleandns->china_ip == NULL && cleandns->foreign_ip == NULL) {
 		for (i = 0; i < cleandns->dns_server_num; i++) {
+			dns_server = cleandns->dns_servers + i;
 			msg->id = (uint16_t)(req->id + i);
-			if (send_nsmsg(cleandns, msg, cleandns->is_foreign_dns[i], NULL,
-				cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
-				cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
+			if (send_nsmsg(cleandns, msg, dns_server->is_foreign, NULL,
+				cleandns->remote_sock, dns_server->addr->ai_addr,
+				dns_server->addr->ai_addrlen, i) != 0) {
 				loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
 			}
 			else {
@@ -529,10 +538,11 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 	else {
 		if (cleandns->china_ip) {
 			for (i = 0; i < cleandns->dns_server_num; i++) {
+				dns_server = cleandns->dns_servers + i;
 				msg->id = (uint16_t)(req->id + i);
-				if (send_nsmsg(cleandns, msg, cleandns->is_foreign_dns[i], &cleandns->china_net,
-					cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
-					cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
+				if (send_nsmsg(cleandns, msg, dns_server->is_foreign, &cleandns->china_net,
+					cleandns->remote_sock, dns_server->addr->ai_addr,
+					dns_server->addr->ai_addrlen, i) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
 				}
 				else {
@@ -543,10 +553,11 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 
 		if (cleandns->foreign_ip) {
 			for (i = 0; i < cleandns->dns_server_num; i++) {
+				dns_server = cleandns->dns_servers + i;
 				msg->id = (uint16_t)(req->id + cleandns->dns_server_num + i);
-				if (send_nsmsg(cleandns, msg, cleandns->is_foreign_dns[i], &cleandns->foreign_net,
-					cleandns->remote_sock, cleandns->dns_server_addr[i]->ai_addr,
-					cleandns->dns_server_addr[i]->ai_addrlen) != 0) {
+				if (send_nsmsg(cleandns, msg, dns_server->is_foreign, &cleandns->foreign_net,
+					cleandns->remote_sock, dns_server->addr->ai_addr,
+					dns_server->addr->ai_addrlen, i) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'foreign_ip'.\n");
 				}
 				else {
@@ -681,9 +692,11 @@ static int check_ns_msg(cleandns_ctx *cleandns, ns_msg_t *msg)
 	int dns_idx;
 	int is_foreign_dns;
 	ns_rr_t *rr;
+	dns_server_t* dns_server;
 
 	dns_idx = dns_index(msg->id, cleandns->dns_server_num);
-	is_foreign_dns = cleandns->is_foreign_dns[dns_idx];
+	dns_server = cleandns->dns_servers + dns_idx;
+	is_foreign_dns = dns_server->is_foreign;
 
 	if (msg->qdcount == 0)
 		return FLG_POLLUTE;
@@ -725,7 +738,8 @@ static int check_ns_msg(cleandns_ctx *cleandns, ns_msg_t *msg)
 static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 {
 	ns_msg_t* best = NULL;
-	struct sockaddr_in* dns;
+	dns_server_t* dns_server;
+	struct sockaddr_in* dns_addr;
 
 	if (req->ns_msg_num == 0) {
 		loge("%s: resolve failed.\n", req->questions);
@@ -739,8 +753,8 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 
 		for (i = 0; i < req->ns_msg_num; i++) {
 			msg = req->ns_msg + i;
-			dns = (struct sockaddr_in*)
-				cleandns->dns_server_addr[dns_index(msg->id, cleandns->dns_server_num)]->ai_addr;
+			dns_server = cleandns->dns_servers + dns_index(msg->id, cleandns->dns_server_num);
+			dns_addr = (struct sockaddr_in*)dns_server->addr->ai_addr;
 
 			flags = check_ns_msg(cleandns, msg);
 			if (flags & FLG_POLLUTE) {
@@ -755,7 +769,7 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 				haveip = (flags & (FLG_A | FLG_AAAA | FLG_A_CHN | FLG_AAAA_CHN));
 				if (haveip) {
 					int chnip, chnsubnet, chndns;
-					struct in_addr* addr = &dns->sin_addr;
+					struct in_addr* addr = &dns_addr->sin_addr;
 
 					chnip = (flags & (FLG_A_CHN | FLG_AAAA_CHN)); /* have chinese ip(s) in result */
 					chnsubnet = !is_foreign(msg->id, cleandns->dns_server_num); /* edns-client-subnet with chinese ip */
@@ -798,10 +812,10 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 		}
 		best = req->ns_msg + best_index;
 		if (loglevel >= LOG_INFO) {
-			dns = (struct sockaddr_in*)
-				cleandns->dns_server_addr[dns_index(best->id, cleandns->dns_server_num)]->ai_addr;
+			dns_server = cleandns->dns_servers + dns_index(best->id, cleandns->dns_server_num);
+			dns_addr = (struct sockaddr_in*)dns_server->addr->ai_addr;
 			logi("best answers come from '%s'\n",
-				get_addrname((struct sockaddr*)dns));
+				get_addrname((struct sockaddr*)dns_addr));
 		}
 	}
 
@@ -822,10 +836,10 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 				}
 			}
 
-			dns = (struct sockaddr_in*)
-				cleandns->dns_server_addr[dns_index(best->id, cleandns->dns_server_num)]->ai_addr;
+			dns_server = cleandns->dns_servers + dns_index(best->id, cleandns->dns_server_num);
+			dns_addr = (struct sockaddr_in*) dns_server->addr->ai_addr;
 
-			dns_name = get_addrname((struct sockaddr*)dns);
+			dns_name = get_addrname((struct sockaddr*)dns_addr);
 
 			rr->cls = NS_PAYLOAD_SIZE; /* reset edns payload size */
 
@@ -839,7 +853,7 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 		best->id = req->old_id;
 
 		if (send_nsmsg(cleandns, best, 0, NULL, cleandns->listen_sock,
-			(struct sockaddr*)(&req->addr), req->addrlen) != 0) {
+			(struct sockaddr*)(&req->addr), req->addrlen, -1) != 0) {
 			loge("response_best_nsmsg: failed to send answers to '%s'\n",
 				get_addrname((struct sockaddr*)(&req->addr)));
 		}
@@ -1098,6 +1112,7 @@ static int resolve_dns_server(cleandns_ctx *cleandns)
 	struct addrinfo hints;
 	char *s, *ip, *port, *p;
 	int r;
+	dns_server_t* dns_server;
 
 	s = strdup(cleandns->dns_server);
 
@@ -1119,8 +1134,9 @@ static int resolve_dns_server(cleandns_ctx *cleandns)
 			port = "53";
 		}
 
-		if ((r = getaddrinfo(ip, port, &hints,
-				cleandns->dns_server_addr + cleandns->dns_server_num)) != 0) {
+		dns_server = cleandns->dns_servers + cleandns->dns_server_num;
+
+		if ((r = getaddrinfo(ip, port, &hints, &dns_server->addr)) != 0) {
 			loge("%s: %s:%s\n", gai_strerror(r), ip, port);
 			free(s);
 			return -1;
@@ -1624,7 +1640,8 @@ static void free_cleandns(cleandns_ctx *cleandns)
 	free(cleandns->log_file);
 
 	for (i = 0; i < cleandns->dns_server_num; i++) {
-		freeaddrinfo(cleandns->dns_server_addr[i]);
+		dns_server_t* dns_server = cleandns->dns_servers + i;
+		freeaddrinfo(dns_server->addr);
 	}
 
 	rbtree_free(&cleandns->queue);
