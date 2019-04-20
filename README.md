@@ -47,8 +47,8 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
     
     2) Open CleanDNS/windows/cleandns.sln with visual studio 2019, build project.
     
-    3) Copy build result (cleandns.exe) with CleanDNS/windows/install_service.bat
-       and CleanDNS/windows/uninstall_service.bat to target directory (e.g. D:\CleanDNS\).
+    3) Copy build result (cleandns.exe) with CleanDNS/windows/install_service.bat,
+       CleanDNS/windows/uninstall_service.bat and chnroute.txt to target directory (e.g. D:\CleanDNS\).
     
     4) Right click D:\CleanDNS\install_service.bat, and click Run as administrator
        to install CleanDNS as service.
