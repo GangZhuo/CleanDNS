@@ -263,6 +263,7 @@ static void print_args(cleandns_ctx* cleandns)
 	logn("china ip: %s\n", cleandns->china_ip);
 	logn("foreign ip: %s\n", cleandns->foreign_ip);
 	logn("compression: %s\n", cleandns->compression ? "on" : "off");
+	logn("pollution detection: %s\n", cleandns->lazy ? "off" : "on");
 	logn("timeout: %d\n", cleandns->timeout);
 	logn("loglevel: %d\n", loglevel);
 #ifndef WINDOWS
@@ -898,41 +899,38 @@ static int check_rr(cleandns_ctx *cleandns, ns_rr_t *rr)
 static int check_ns_msg(cleandns_ctx *cleandns, ns_msg_t *msg)
 {
 	int i, rrcount, flags = 0;
-	int dns_idx;
-	int is_foreign_dns;
 	ns_rr_t *rr;
-	dns_server_t* dns_server;
 
-	dns_idx = dns_index(msg->id, cleandns->dns_server_num);
-	dns_server = cleandns->dns_servers + dns_idx;
-	is_foreign_dns = dns_server->is_foreign;
+    if (!cleandns->lazy) {
+        int dns_idx;
+        int is_foreign_dns;
+    	dns_server_t* dns_server;
 
-	if (msg->qdcount == 0)
-		return FLG_POLLUTE;
+        dns_idx = dns_index(msg->id, cleandns->dns_server_num);
+        dns_server = cleandns->dns_servers + dns_idx;
+        is_foreign_dns = dns_server->is_foreign;
 
-	if (msg->ancount == 0)
-		return FLG_POLLUTE;
+	    if (msg->qdcount == 0)
+	    	return FLG_POLLUTE;
 
+	    if (msg->ancount == 0)
+		    return FLG_POLLUTE;
 
-	/*if it's come from foreign dns server, it should be have esc.*/
-	if (is_foreign_dns) {
-		if (msg->arcount == 0)
-			return FLG_POLLUTE;
-
-		/* comment below code, 
-		  since with foreign subnet, google (8.8.8.8) response with no ECS.
-
-		if (ns_find_ecs(msg, NULL) == NULL)
-			return FLG_POLLUTE;*/
-	}
+	    /*if it's come from foreign dns server, it should be have esc.*/
+	    if (is_foreign_dns) {
+		    if (msg->ancount < 2 && msg->arcount == 0)
+			    return FLG_POLLUTE;
+	    }
+    }
 
 	rrcount = msg->ancount + msg->nscount;
 	for (i = 0; i < rrcount; i++) {
 		rr = msg->rrs + i;
 		flags |= check_rr(cleandns, rr);
 
-		if (flags & FLG_OPT) /* edns should be in additional records section */
-			return FLG_POLLUTE;
+        /* edns should be in additional records section */
+		if (!cleandns->lazy && (flags & FLG_OPT))
+            return FLG_POLLUTE;
 	}
 
 	rrcount = ns_rrcount(msg);
@@ -1705,6 +1703,13 @@ static int read_config_file(cleandns_ctx* cleandns, const char *config_file, int
 		return -1;
 	}
 
+#define is_true_val(s) \
+   (strcmp((s), "1") == 0 || \
+    strcmp((s), "on") == 0 || \
+	strcmp((s), "true") == 0 || \
+	strcmp((s), "yes") == 0 || \
+	strcmp((s), "enabled") == 0)
+
 	while (!feof(pf)) {
 		memset(line, 0, sizeof(line));
 		fgets(line, sizeof(line) - 1, pf);
@@ -1773,11 +1778,7 @@ static int read_config_file(cleandns_ctx* cleandns, const char *config_file, int
 		}
 		else if (strcmp(name, "compression") == 0 && strlen(value)) {
 			if (force || !cleandns->compression) {
-				cleandns->compression = strcmp(value, "1") == 0 ||
-					strcmp(value, "on") == 0 ||
-					strcmp(value, "true") == 0 ||
-					strcmp(value, "yes") == 0 ||
-					strcmp(value, "enabled") == 0;
+				cleandns->compression = is_true_val(value);
 			}
 		}
 		else if (strcmp(name, "timeout") == 0 && strlen(value)) {
@@ -1802,12 +1803,19 @@ static int read_config_file(cleandns_ctx* cleandns, const char *config_file, int
 				loglevel = atoi(value);
 			}
 		}
+		else if (strcmp(name, "lazy") == 0 && strlen(value)) {
+			if (force || !cleandns->lazy) {
+				cleandns->lazy = is_true_val(value);
+			}
+		}
 		else {
 			/*do nothing*/
 		}
 	}
 
 	fclose(pf);
+
+#undef is_true_val
 
 	return 0;
 }
@@ -1825,6 +1833,7 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 		{"log_level", required_argument, NULL, 4},
 		{"config",    required_argument, NULL, 5},
 		{"launch_log",required_argument, NULL, 6},
+		{"lazy",      required_argument, NULL, 7},
 		{0, 0, 0, 0}
 	};
 
@@ -1850,6 +1859,9 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 		case 6:
 			launch_log_file = optarg;
 			break;
+        case 7:
+            cleandns->lazy = 1;
+            break;
 		case 'h':
 			usage();
 			exit(0);
@@ -2028,6 +2040,7 @@ Options:\n\
   --log=LOG_FILE_PATH   log file, only avalidate on daemonize.\n\
   --log_level=LOG_LEVEL log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
   --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.\n\
+  --lazy                disable pollution detection.\n\
   -v                    verbose logging.\n\
   -h                    show this help message and exit.\n\
   -V                    print version and exit.\n\
