@@ -28,9 +28,9 @@
 #define CLEANDNS_NAME    "CleanDNS"
 #define CLEANDNS_VERSION "0.3.1"
 
-#define DEFAULT_DNS_SERVER "8.8.8.8,114.114.114.114"
+#define DEFAULT_DNS_SERVER "8.8.8.8:53,114.114.114.114:53"
 #define DEFAULT_LISTEN_ADDR "0.0.0.0"
-#define DEFAULT_LISTEN_PORT "53"
+#define DEFAULT_LISTEN_PORT "5354"
 #define DEFAULT_CHNROUTE_FILE "chnroute.txt"
 #define DEFAULT_TIMEOUT "5"
 #define DEFAULT_PID_FILE "/var/run/cleandns.pid"
@@ -2041,10 +2041,17 @@ static void usage()
   printf("%s\n", "\n"
 CLEANDNS_NAME " " CLEANDNS_VERSION "\n\
 \n\
-usage: cleandns [-h] [-l CHINA_IP] [-f FOREIGN_IP] [-b BIND_ADDR]\n\
-       [-p BIND_PORT] [-c CHNROUTE_FILE] [-s DNS] [-m] [-v] [-V]\n\
+Usage:\n\
 \n\
-Forward DNS requests.\n\
+cleandns [-l CHINA_IP] [-f FOREIGN_IP] [-b BIND_ADDR]\n\
+         [-p BIND_PORT] [-c CHNROUTE_FILE] [-s DNS] [-t TIMEOUT]\n\
+         [--log=LOG_FILE_PATH] [--log_level=LOG_LEVEL]\n\
+         [--config=CONFIG_PATH] [--pid=PID_FILE_PATH]\n\
+         [--daemon] [-m] [-v] [-V] [-h]\n\
+\n\
+Forward DNS requests with ECS (edns-client-subnet) support.\n\
+\n\
+Options:\n\
 \n\
   -l CHINA_IP           china ip address, e.g. 114.114.114.114/24.\n\
   -f FOREIGN_IP         foreign ip address, e.g. 8.8.8.8/24.\n\
@@ -2052,13 +2059,16 @@ Forward DNS requests.\n\
   -b BIND_ADDR          address that listens, default: " DEFAULT_LISTEN_ADDR ".\n\
   -p BIND_PORT          port that listens, default: " DEFAULT_LISTEN_PORT ".\n\
   -s DNS                DNS server to use, default: " DEFAULT_DNS_SERVER ".\n\
+                        tcp://IP[:PORT] means forward request to upstream by TCP protocol,\n\
+                        [udp://]IP[:PORT] means forward request to upstream by UDP protocol,\n\
+                        default forward by UDP protocol, and default port of upstream is 53.\n\
   -m                    use DNS compression pointer mutation, only avalidate on foreign dns server.\n\
-  -t                    timeout, default: " DEFAULT_TIMEOUT ".\n\
+  -t TIMEOUT            timeout, default: " DEFAULT_TIMEOUT ".\n\
   --daemon              daemonize.\n\
   --pid=PID_FILE_PATH   pid file, default: " DEFAULT_PID_FILE ", only avalidate on daemonize.\n\
   --log=LOG_FILE_PATH   log file, only avalidate on daemonize.\n\
   --log_level=LOG_LEVEL log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
-  --config=CONFIG_PATH  config file.\n\
+  --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.\n\
   -v                    verbose logging.\n\
   -h                    show this help message and exit.\n\
   -V                    print version and exit.\n\
