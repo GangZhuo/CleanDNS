@@ -672,19 +672,18 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 			return -1;
 		}
 		conn_t* conn = &req->conns[req->conn_num++];
-		int connected = 0;
 		memset(conn, 0, sizeof(conn_t));
 		conn->dns_server_index = dns_server_index;
 		conn->sendbuf = s.array;
 		conn->sendbuf_size = s.size;
 		memset(&s, 0, sizeof(stream_t));
 
-		if (connect_server(conn, dns_server, &connected) != 0) {
+		if (connect_server(conn, dns_server) != 0) {
 			loge("send_nsmsg: cannot connect to '%s'\n", get_addrname(dns_server->addr->ai_addr));
 			free_conn(conn);
 			return -1;
 		}
-		else if (connected) {
+		else if (conn->connected) {
 			if (tcp_send(cleandns, conn) == -1) {
 				loge("send_nsmsg: cannot send data to '%s' (TCP)\n", get_addrname(dns_server->addr->ai_addr));
 				free_conn(conn);
