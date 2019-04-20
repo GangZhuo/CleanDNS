@@ -29,6 +29,8 @@ start()
     local dns_server=$(uci_get dns_server)
     local compr=$(uci_bool compression)
     local pid_file=$(uci_get pid_file)
+    local timeout=$(uci_get timeout)
+    local log_level=$(uci_get log_level)
 
     if [ -f $pid_file ]
         then
@@ -44,6 +46,8 @@ start()
         -b $bind_addr \
         -p $bind_port \
         $compr \
+		-t $timeout \
+		--log_level=$log_level \
         --daemon \
         --pid=$pid_file 
 
