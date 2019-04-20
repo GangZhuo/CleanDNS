@@ -95,6 +95,7 @@ static void usage();
 static int init_cleandns(cleandns_ctx *cleandns);
 static void free_cleandns(cleandns_ctx *cleandns);
 static void free_conn(conn_t* conn);
+static void queue_remove_bynode(cleandns_ctx* cleandns, rbnode_t* n);
 static int parse_args(cleandns_ctx *cleandns, int argc, char **argv);
 static void print_args(cleandns_ctx* cleandns);
 static int parse_chnroute(cleandns_ctx *cleandns);
@@ -107,7 +108,7 @@ static int do_loop(cleandns_ctx *cleandns);
 static int handle_listen_sock(cleandns_ctx *cleandns);
 static int handle_remote_sock(cleandns_ctx *cleandns);
 static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t* req, conn_t* conn, int conn_index);
-static int handle_timeout(cleandns_ctx *cleandns);
+static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req);
 static char *get_addrname(struct sockaddr *addr);
 static int parse_netmask(net_mask_t *netmask, char *line);
 static void run_as_daemonize(cleandns_ctx* cleandns);
@@ -365,7 +366,7 @@ static int do_loop(cleandns_ctx *cleandns)
 			}
 		}
 
-		if (select(max_fd + 1, &readset, &writeset, &errorset, &timeout) == -1) {
+		if (select((int)max_fd + 1, &readset, &writeset, &errorset, &timeout) == -1) {
 			loge("do_loop(): select error\n");
 			return -1;
 		}
@@ -392,7 +393,7 @@ static int do_loop(cleandns_ctx *cleandns)
 			req = n->info;
 			item = item->next;
 
-			if (req && req->conn_num > 0) {
+			if (req) {
 				int i;
 				conn_t* conn;
 				for (i = 0; i < req->conn_num; i++) {
@@ -425,12 +426,27 @@ static int do_loop(cleandns_ctx *cleandns)
 						handle_remote_tcpsock(cleandns, req, conn, i);
 					}
 				}
+
+				if (req->ns_msg_num >= req->wait_num) {
+					queue_remove_bynode(cleandns, n);
+					response_best_nsmsg(cleandns, req);
+				}
+				else {
+					time_t now = time(NULL);
+					if (req->expire <= now) {
+						logi("timeout: questions=%s\n", req->questions);
+						queue_remove_bynode(cleandns, n);
+						response_best_nsmsg(cleandns, req);
+					}
+				}
+
+			}
+			else {
+				queue_remove_bynode(cleandns, n);
 			}
 		}
 
 		rbnode_list_destroy(req_list.nodes);
-
-		handle_timeout(cleandns);
 	}
 
 	return 0;
@@ -722,7 +738,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 			msg->id = (uint16_t)(req->id + i);
 			if (send_nsmsg(cleandns, msg, dns_server->is_foreign, NULL,
 				cleandns->remote_sock, dns_server->addr->ai_addr,
-				dns_server->addr->ai_addrlen, req, i) != 0) {
+				(socklen_t)dns_server->addr->ai_addrlen, req, i) != 0) {
 				loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
 			}
 			else {
@@ -738,7 +754,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 				msg->id = (uint16_t)(req->id + i);
 				if (send_nsmsg(cleandns, msg, dns_server->is_foreign, &cleandns->china_net,
 					cleandns->remote_sock, dns_server->addr->ai_addr,
-					dns_server->addr->ai_addrlen, req, i) != 0) {
+					(socklen_t)dns_server->addr->ai_addrlen, req, i) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
 				}
 				else {
@@ -753,7 +769,7 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 				msg->id = (uint16_t)(req->id + cleandns->dns_server_num + i);
 				if (send_nsmsg(cleandns, msg, dns_server->is_foreign, &cleandns->foreign_net,
 					cleandns->remote_sock, dns_server->addr->ai_addr,
-					dns_server->addr->ai_addrlen, req, i) != 0) {
+					(socklen_t)dns_server->addr->ai_addrlen, req, i) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'foreign_ip'.\n");
 				}
 				else {
@@ -1036,7 +1052,7 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 
 			rr->cls = NS_PAYLOAD_SIZE; /* reset edns payload size */
 
-			if (ns_optrr_set_opt(rr, NS_OPTCODE_SVR, strlen(dns_name)+1, dns_name) == NULL) {
+			if (ns_optrr_set_opt(rr, NS_OPTCODE_SVR, (uint16_t)(strlen(dns_name) + 1), dns_name) == NULL) {
 				loge("response_best_nsmsg: Can't add dns name\n");
 				return -1;
 			}
@@ -1109,11 +1125,6 @@ static int handle_remote_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg)
 
 		/* clear, so there do not free the copied files when 'ns_msg_free(msg)' */
 		memset(msg, 0, sizeof(ns_msg_t));
-	}
-
-	if (req->ns_msg_num >= req->wait_num) {
-		queue_remove_bynode(cleandns, reqnode);
-		return response_best_nsmsg(cleandns, req);
 	}
 
 	return 0;
@@ -1287,58 +1298,6 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 	}
 }
 
-static int cb_each_rbnode(rbtree_t *tree, rbnode_t *x, void *state)
-{
-	timeout_handler_ctx *ctx = state;
-	req_t *req = x->info;
-	
-	if (req->expire <= ctx->now) {
-		rbnode_list_add(ctx->expired_nodes, x);
-	}
-
-	return 0;
-}
-
-static int handle_timeout(cleandns_ctx *cleandns)
-{
-	timeout_handler_ctx ctx;
-	rbnode_list_item_t *item;
-	rbnode_t *n;
-	req_t *req;
-
-	ctx.cleandns = cleandns;
-	ctx.now = time(NULL);
-	ctx.expired_nodes = rbnode_list_create();
-
-	if (ctx.expired_nodes == NULL) {
-		loge("handle_timeout: rbnode_list_create()\n");
-		return -1;
-	}
-
-	rbtree_each(&cleandns->queue, cb_each_rbnode, &ctx);
-
-	item = ctx.expired_nodes->items;
-	while (item) {
-		n = item->node;
-		req = n->info;
-		item = item->next;
-
-		queue_remove_bynode(cleandns, n);
-
-		if (loglevel >= LOG_INFO) {
-			logi("timeout: questions=%s\n",
-				req->questions);
-		}
-
-		response_best_nsmsg(cleandns, req);
-
-	}
-
-	rbnode_list_destroy(ctx.expired_nodes);
-
-	return 0;
-}
-
 static int setnonblock(sock_t sock)
 {
 #ifdef WINDOWS
@@ -1414,7 +1373,7 @@ static int connect_server(conn_t *conn, dns_server_t *server)
 		return -1;
 	}
 
-	if (connect(sock, server->addr->ai_addr, server->addr->ai_addrlen) != 0) {
+	if (connect(sock, server->addr->ai_addr, (int)server->addr->ai_addrlen) != 0) {
 		int err = errno;
 		if (is_eagain(err)) {
 			conn->sock = sock;
@@ -1454,7 +1413,7 @@ static int init_sockets(cleandns_ctx *cleandns)
 		loge("%s:%s:%s\n", gai_strerror(r), cleandns->listen_addr, cleandns->listen_port);
 		return -1;
 	}
-	if (bind(cleandns->listen_sock, addr_ip->ai_addr, addr_ip->ai_addrlen) != 0) {
+	if (bind(cleandns->listen_sock, addr_ip->ai_addr, (int)addr_ip->ai_addrlen) != 0) {
 		loge("Can't bind address %s:%s\n", cleandns->listen_addr, cleandns->listen_port);
 		return -1;
 	}
@@ -1611,7 +1570,7 @@ static int parse_netmask(net_mask_t *netmask, char *line)
 static int parse_chnroute(cleandns_ctx *cleandns)
 {
 	char buf[32];
-	size_t buf_size;
+	int buf_size;
 	char *line;
 	net_list_t *list;
 	FILE *fp;
@@ -1674,7 +1633,7 @@ static char* ltrim(char* s)
 /*right trim*/
 static char* rtrim(char* s)
 {
-	int len;
+	size_t len;
 	char *p;
 
 	len = strlen(s);
@@ -1688,7 +1647,7 @@ static char* rtrim(char* s)
 static char* trim_quote(char* s)
 {
 	char *start, *end;
-	int len;
+	size_t len;
 
 	len = strlen(s);
 	start = s;
