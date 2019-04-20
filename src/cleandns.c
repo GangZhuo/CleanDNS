@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <errno.h>
 
 #ifndef WINDOWS
 #include <signal.h>
