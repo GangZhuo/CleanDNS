@@ -1,8 +1,7 @@
 @echo off
 
-
 set SERVICE_NAME=CleanDNS
-set SERVICE_DESCRIPTION=Non-polluting DNS. Support ECS (edns-client-subnet). https://github.com/GangZhuo/CleanDNS
+set SERVICE_DESCRIPTION=Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
 
 SET CONFIG_FILE=cleandns.config
 
@@ -27,6 +26,6 @@ if not exist "%CURR_PATH%%CONFIG_FILE%" (
 
 sc create "%SERVICE_NAME%" binpath= "\"%CURR_PATH%cleandns.exe\" --daemon --config=\"%CURR_PATH%%CONFIG_FILE%\" --launch_log=\"%CURR_PATH%cleandns_launch_log.log\"" displayname= "%SERVICE_NAME%" depend= Tcpip start= auto  
 
-sc description "%SERVICE_NAME%" "Non-polluting DNS. Support ECS (edns-client-subnet). https://github.com/GangZhuo/CleanDNS"
+sc description "%SERVICE_NAME%" "%SERVICE_DESCRIPTION%"
 
 @echo on
