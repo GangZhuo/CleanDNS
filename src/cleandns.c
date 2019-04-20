@@ -434,7 +434,7 @@ static int do_loop(cleandns_ctx *cleandns)
 				else {
 					time_t now = time(NULL);
 					if (req->expire <= now) {
-						logi("timeout: questions=%s\n", req->questions);
+						logw("timeout: questions=%s\n", req->questions);
 						queue_remove_bynode(cleandns, n);
 						response_best_nsmsg(cleandns, req);
 					}
