@@ -1386,43 +1386,43 @@ static int read_config_file(cleandns_ctx* cleandns, const char *config_file, int
 			return -1;
 		}
 
-		if (strcmp(name, "bind_addr") == 0) {
+		if (strcmp(name, "bind_addr") == 0 && strlen(value)) {
 			if (force || !cleandns->listen_addr) {
 				if (cleandns->listen_addr) free(cleandns->listen_addr);
 				cleandns->listen_addr = strdup(value);
 			}
 		}
-		else if (strcmp(name, "bind_port") == 0) {
+		else if (strcmp(name, "bind_port") == 0 && strlen(value)) {
 			if (force || !cleandns->listen_port) {
 				if (cleandns->listen_port) free(cleandns->listen_port);
 				cleandns->listen_port = strdup(value);
 			}
 		}
-		else if (strcmp(name, "chnroute") == 0) {
+		else if (strcmp(name, "chnroute") == 0 && strlen(value)) {
 			if (force || !cleandns->chnroute_file) {
 				if (cleandns->chnroute_file) free(cleandns->chnroute_file);
 				cleandns->chnroute_file = strdup(value);
 			}
 		}
-		else if (strcmp(name, "china_ip") == 0) {
+		else if (strcmp(name, "china_ip") == 0 && strlen(value)) {
 			if (force || !cleandns->china_ip) {
 				if (cleandns->china_ip) free(cleandns->china_ip);
 				cleandns->china_ip = strdup(value);
 			}
 		}
-		else if (strcmp(name, "foreign_ip") == 0) {
+		else if (strcmp(name, "foreign_ip") == 0 && strlen(value)) {
 			if (force || !cleandns->foreign_ip) {
 				if (cleandns->foreign_ip) free(cleandns->foreign_ip);
 				cleandns->foreign_ip = strdup(value);
 			}
 		}
-		else if (strcmp(name, "dns_server") == 0) {
+		else if (strcmp(name, "dns_server") == 0 && strlen(value)) {
 			if (force || !cleandns->dns_server) {
 				if (cleandns->dns_server) free(cleandns->dns_server);
 				cleandns->dns_server = strdup(value);
 			}
 		}
-		else if (strcmp(name, "compression") == 0) {
+		else if (strcmp(name, "compression") == 0 && strlen(value)) {
 			if (force || !cleandns->compression) {
 				cleandns->compression = strcmp(value, "1") == 0 ||
 					strcmp(value, "on") == 0 ||
@@ -1431,24 +1431,24 @@ static int read_config_file(cleandns_ctx* cleandns, const char *config_file, int
 					strcmp(value, "enabled") == 0;
 			}
 		}
-		else if (strcmp(name, "timeout") == 0) {
+		else if (strcmp(name, "timeout") == 0 && strlen(value)) {
 			if (force || cleandns->timeout <= 0) {
 				cleandns->timeout = atoi(value);
 			}
 		}
-		else if (strcmp(name, "pid_file") == 0) {
+		else if (strcmp(name, "pid_file") == 0 && strlen(value)) {
 			if (force || !cleandns->pid_file) {
 				if (cleandns->pid_file) free(cleandns->pid_file);
 				cleandns->pid_file = strdup(value);
 			}
 		}
-		else if (strcmp(name, "log_file") == 0) {
+		else if (strcmp(name, "log_file") == 0 && strlen(value)) {
 			if (force || !cleandns->log_file) {
 				if (cleandns->log_file) free(cleandns->log_file);
 				cleandns->log_file = strdup(value);
 			}
 		}
-		else if (strcmp(name, "log_level") == 0) {
+		else if (strcmp(name, "log_level") == 0 && strlen(value)) {
 			if (force || loglevel == LOG_DEFAULT_LEVEL) {
 				loglevel = atoi(value);
 			}
