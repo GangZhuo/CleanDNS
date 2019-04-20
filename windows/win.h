@@ -20,6 +20,7 @@ extern "C" {
 #undef errno
 #define errno WSAGetLastError()
 #define close(fd) closesocket(fd)
+#define strerror(errcode) win_strerror(errcode)
 
 extern void win_init();
 
@@ -27,6 +28,8 @@ extern void win_uninit();
 
 /* See https://support.microsoft.com/en-us/kb/263823 */
 int disable_udp_connreset(SOCKET sockfd);
+
+const char* win_strerror(int err_code);
 
 #ifdef __cplusplus
 }

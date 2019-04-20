@@ -18,10 +18,18 @@ typedef int sock_t;
 #include "rbtree.h"
 #include "ns_msg.h"
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct conn_t {
+	sock_t sock;
+	int dns_server_index;
+	char* sendbuf;
+	int sendbuf_size;
+	char *recvbuf;
+	int recvbuf_size;
+} conn_t;
 
 typedef struct req_t {
 	uint16_t id;
@@ -34,6 +42,8 @@ typedef struct req_t {
 	ns_msg_t ns_msg[MAX_NS_MSG];
 	int ns_msg_num;
 	int wait_num;
+	conn_t conns[MAX_NS_MSG];
+	int conn_num;
 } req_t;
 
 typedef struct subnet_t {
@@ -55,6 +65,7 @@ typedef struct net_list_t {
 typedef struct dns_server_t {
 	struct addrinfo* addr;
 	int is_foreign;
+	int tcp;
 } dns_server_t;
 
 typedef struct cleandns_ctx {
