@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <fcntl.h>
+#include <ctype.h>
 
 #ifndef WINDOWS
 #include <signal.h>
