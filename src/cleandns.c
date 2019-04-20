@@ -1396,6 +1396,7 @@ static int connect_server(conn_t *conn, dns_server_t *server, int* connected)
 			conn->sock = sock;
 			return 0;
 		}
+		loge("connect_server(): connect to '%s' error. %s\n", strerror(err));
 		close(sock);
 		return -1;
 	}
