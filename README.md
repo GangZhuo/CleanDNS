@@ -95,6 +95,7 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
       --log=LOG_FILE_PATH   log file, only avalidate on daemonize.
       --log_level=LOG_LEVEL log level, range: [0, 7], default: 5.
       --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.
+      --lazy                disable pollution detection.
       -v                    verbose logging.
       -h                    show this help message and exit.
       -V                    print version and exit.
