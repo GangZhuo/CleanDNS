@@ -102,7 +102,7 @@ static int test_ip_in_list(struct in_addr *ip, const net_list_t *netlist);
 static int resolve_dns_server(cleandns_ctx *cleandns);
 static int init_sockets(cleandns_ctx *cleandns);
 static int connect_server(conn_t* conn, dns_server_t* server, int *connected);
-static int tcp_send(conn_t* conn);
+static int tcp_send(cleandns_ctx* cleandns, conn_t* conn);
 static int do_loop(cleandns_ctx *cleandns);
 static int handle_listen_sock(cleandns_ctx *cleandns);
 static int handle_remote_sock(cleandns_ctx *cleandns);
@@ -406,16 +406,16 @@ static int do_loop(cleandns_ctx *cleandns)
 						continue;
 					}
 
-					if (FD_ISSET(conn->sock, &readset)) {
-						handle_remote_tcpsock(cleandns, req, conn, i);
-					}
-
 					if (FD_ISSET(conn->sock, &writeset)) {
-						if (tcp_send(conn) == -1) {
+						if (tcp_send(cleandns, conn) == -1) {
 							loge("do_loop(): cannot send data to '%s' (TCP)\n",
 								get_addrname(cleandns->dns_servers[conn->dns_server_index].addr->ai_addr));
 							free_conn(conn);
 						}
+					}
+
+					if (FD_ISSET(conn->sock, &readset)) {
+						handle_remote_tcpsock(cleandns, req, conn, i);
 					}
 				}
 			}
@@ -675,14 +675,16 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 		conn->sendbuf_size = s.size;
 		memset(&s, 0, sizeof(stream_t));
 
-		if (connect_server(conn, dns_server, &connected)) {
+		if (connect_server(conn, dns_server, &connected) != 0) {
 			loge("send_nsmsg: cannot connect to '%s'\n", get_addrname(dns_server->addr->ai_addr));
 			free_conn(conn);
+			return -1;
 		}
 		else if (connected) {
-			if (tcp_send(conn) == -1) {
+			if (tcp_send(cleandns, conn) == -1) {
 				loge("send_nsmsg: cannot send data to '%s' (TCP)\n", get_addrname(dns_server->addr->ai_addr));
 				free_conn(conn);
+				return -1;
 			}
 		}
 	}
@@ -1206,7 +1208,7 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 		int msglen = 0;
 
 		if (loglevel > LOG_DEBUG) {
-			logd("recv %d bytes (TCP)\n", nread);
+			logd("recv %d bytes from '%s' (TCP)\n", nread, get_addrname(dns_server->addr->ai_addr));
 		}
 
 		conn->recvbuf_size += nread;
@@ -1260,9 +1262,11 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 		if (partly_recv) {
 			if (loglevel > LOG_DEBUG) {
 				if (msglen > 0)
-					logd("partly recv %d bytes, expect %d\n", conn->recvbuf_size, msglen + 2);
+					logd("partly recv %d bytes from '%s', expect %d\n",
+						conn->recvbuf_size, get_addrname(dns_server->addr->ai_addr), msglen + 2);
 				else
-					logd("partly recv %d bytes\n", conn->recvbuf_size);
+					logd("partly recv %d bytes from '%s'\n",
+						conn->recvbuf_size, get_addrname(dns_server->addr->ai_addr));
 			}
 		}
 		return 0;
@@ -1277,13 +1281,14 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 		if (is_eagain(err)) {
 
 			if (loglevel > LOG_DEBUG) {
-				logd("recv() EAGAIN (TCP)\n");
+				logd("recv() EAGAIN (TCP) '%s'\n", get_addrname(dns_server->addr->ai_addr));
 			}
 
 			return 0;
 		}
 		else {
-			loge("handle_remote_tcpsock: %d %s\n", err, strerror(err));
+			loge("handle_remote_tcpsock: %s %d %s\n",
+				get_addrname(dns_server->addr->ai_addr), err, strerror(err));
 			free_conn(conn);
 			return -1;
 		}
@@ -1369,39 +1374,40 @@ static int setnonblock(sock_t sock)
 	return 0;
 }
 
-static int tcp_send(conn_t* conn)
+static int tcp_send(cleandns_ctx* cleandns, conn_t* conn)
 {
+	dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
 	int nsend;
 
 	nsend = send(conn->sock, conn->sendbuf, conn->sendbuf_size, 0);
 	if (nsend == -1) {
 		int err = errno;
 		if (!is_eagain(err)) {
-			loge("tcp_send() error: %s \n", strerror(err));
+			loge("tcp_send() error: %s %s \n", get_addrname(dns_server->addr->ai_addr), strerror(err));
 			return -1;
 		}
 		if (loglevel > LOG_DEBUG) {
-			logd("send() EAGAIN (TCP)\n");
+			logd("send() EAGAIN (TCP) %s\n", get_addrname(dns_server->addr->ai_addr));
 		}
 		return 0;
 	}
 	else if (nsend < conn->sendbuf_size) {
 		if (loglevel > LOG_DEBUG) {
-			logd("partly send %d bytes (TCP)\n", nsend);
+			logd("partly send %d bytes to '%s' (TCP)\n", nsend, get_addrname(dns_server->addr->ai_addr));
 		}
 		/* partly sent, move memory, wait for the next time to send */
 		memmove(conn->sendbuf, conn->sendbuf + nsend, conn->sendbuf_size - nsend);
 		conn->sendbuf_size -= nsend;
-		return nsend;
+		return 0;
 	}
 	else {
 		if (loglevel > LOG_DEBUG) {
-			logd("send %d bytes (TCP)\n", nsend);
+			logd("send %d bytes to '%s' (TCP)\n", nsend, get_addrname(dns_server->addr->ai_addr));
 		}
 		free(conn->sendbuf);
 		conn->sendbuf = NULL;
 		conn->sendbuf_size = 0;
-		return nsend;
+		return 0;
 	}
 }
 
