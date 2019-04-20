@@ -128,6 +128,11 @@ int main(int argc, char **argv)
 	if (parse_args(&cleandns, argc, argv) != 0)
 		return EXIT_FAILURE;
 
+	log_file = cleandns.log_file;
+	if (log_file) {
+		open_logfile();
+	}
+
 	if (cleandns.china_ip) {
 		if (ns_ecs_parse_subnet((struct sockaddr *)(&cleandns.china_net.addr),
 			&cleandns.china_net.mask, cleandns.china_ip) != 0) {
@@ -151,12 +156,6 @@ int main(int argc, char **argv)
 
 	if (resolve_dns_server(&cleandns) != 0)
 		return EXIT_FAILURE;
-
-	log_file = cleandns.log_file;
-
-	if (log_file) {
-		open_logfile();
-	}
 
 	if (cleandns.compression) {
 		int i;
@@ -1467,13 +1466,15 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 {
 	int ch;
 	int option_index = 0;
+	const char* launch_log_file = NULL;
 	const char *config_file = NULL;
 	static struct option long_options[] = {
-		{"daemon",   no_argument,       NULL, 1},
-		{"pid",      required_argument, NULL, 2},
-		{"log",      required_argument, NULL, 3},
-		{"log_level",required_argument, NULL, 4},
-		{"config",   required_argument, NULL, 5},
+		{"daemon",    no_argument,       NULL, 1},
+		{"pid",       required_argument, NULL, 2},
+		{"log",       required_argument, NULL, 3},
+		{"log_level", required_argument, NULL, 4},
+		{"config",    required_argument, NULL, 5},
+		{"launch_log",required_argument, NULL, 6},
 		{0, 0, 0, 0}
 	};
 
@@ -1495,6 +1496,9 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 			break;
 		case 5:
 			config_file = optarg;
+			break;
+		case 6:
+			launch_log_file = optarg;
 			break;
 		case 'h':
 			usage();
@@ -1539,6 +1543,16 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 			usage();
 			exit(1);
 		}
+	}
+
+	if (cleandns->log_file) {
+		log_file = cleandns->log_file;
+		launch_log_file = NULL;
+		open_logfile();
+	}
+	else if (launch_log_file) {
+		log_file = launch_log_file;
+		open_logfile();
 	}
 
 	if (config_file) {
