@@ -15,8 +15,13 @@ typedef int sock_t;
 #define MAX_DNS_SERVER 8
 #define MAX_NS_MSG (MAX_DNS_SERVER * 2)
 
-#define CONN_CONNECTING	0
-#define CONN_CONNECTED 1
+#define CONN_CONNECTING			0
+#define CONN_CONNECTED			1
+#define CONN_PROXY_HANKSHAKE_1	2
+#define CONN_PROXY_HANKSHAKE_2	3
+#define CONN_PROXY_HANKSHAKE_3	4
+#define CONN_PROXY_HANKSHAKE_4	5
+#define CONN_PROXY_CONNECTED	6
 
 #include "rbtree.h"
 #include "ns_msg.h"
@@ -25,10 +30,17 @@ typedef int sock_t;
 extern "C" {
 #endif
 
+typedef struct proxy_state_t {
+	char *sendbuf;
+	int sendbuf_size;
+} proxy_state_t;
+
 typedef struct conn_t {
 	sock_t sock;
 	int status;
 	int dns_server_index;
+	int by_proxy;
+	proxy_state_t *proxy_state;
 	char* sendbuf;
 	int sendbuf_size;
 	char *recvbuf;

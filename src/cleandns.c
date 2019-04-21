@@ -103,12 +103,12 @@ static int parse_chnroute(cleandns_ctx *cleandns);
 static int test_ip_in_list(struct in_addr *ip, const net_list_t *netlist);
 static int resolve_dns_server(cleandns_ctx *cleandns);
 static int init_sockets(cleandns_ctx *cleandns);
-static int connect_server(conn_t* conn, dns_server_t* server);
+static int connect_server(cleandns_ctx* cleandns, conn_t* conn, dns_server_t* server);
 static int tcp_send(cleandns_ctx* cleandns, conn_t* conn);
 static int do_loop(cleandns_ctx *cleandns);
 static int handle_listen_sock(cleandns_ctx *cleandns);
-static int handle_remote_sock(cleandns_ctx *cleandns);
-static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t* req, conn_t* conn, int conn_index);
+static int handle_remote_udprecv(cleandns_ctx *cleandns);
+static int handle_remote_tcprecv(cleandns_ctx* cleandns, req_t* req, conn_t* conn, int conn_index);
 static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req);
 static char *get_addrname(struct sockaddr *addr);
 static int parse_netmask(net_mask_t *netmask, char *line);
@@ -394,7 +394,7 @@ static int do_loop(cleandns_ctx *cleandns)
 			handle_listen_sock(cleandns);
 
 		if (FD_ISSET(cleandns->remote_sock, &readset))
-			handle_remote_sock(cleandns);
+			handle_remote_udprecv(cleandns);
 
 		item = req_list.nodes->items;
 		while (item) {
@@ -432,7 +432,7 @@ static int do_loop(cleandns_ctx *cleandns)
 					}
 
 					if (FD_ISSET(conn->sock, &readset)) {
-						handle_remote_tcpsock(cleandns, req, conn, i);
+						handle_remote_tcprecv(cleandns, req, conn, i);
 					}
 				}
 
@@ -467,6 +467,15 @@ static void free_conn(conn_t* conn)
 		if (conn->sock > 0) {
 			close(conn->sock);
 			conn->sock = 0;
+		}
+		if (conn->proxy_state) {
+			if (conn->proxy_state->sendbuf) {
+				free(conn->proxy_state->sendbuf);
+				conn->proxy_state->sendbuf = NULL;
+				conn->proxy_state->sendbuf_size = 0;
+			}
+			free(conn->proxy_state);
+			conn->proxy_state = NULL;
 		}
 		if (conn->sendbuf) {
 			free(conn->sendbuf);
@@ -704,7 +713,7 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 		conn->sendbuf_size = s.size;
 		memset(&s, 0, sizeof(stream_t));
 
-		if (connect_server(conn, dns_server) != 0) {
+		if (connect_server(cleandns, conn, dns_server) != 0) {
 			loge("send_nsmsg: cannot connect to '%s'\n", get_addrname(dns_server->addr->ai_addr));
 			free_conn(conn);
 			return -1;
@@ -1171,7 +1180,7 @@ static int handle_remote_sock_recv(cleandns_ctx *cleandns, char *buf, int len, s
     
 }
 
-static int handle_remote_sock(cleandns_ctx *cleandns)
+static int handle_remote_udprecv(cleandns_ctx *cleandns)
 {
 	struct sockaddr_storage from_addr;
 	socklen_t from_addrlen = sizeof(struct sockaddr_storage);
@@ -1188,19 +1197,19 @@ static int handle_remote_sock(cleandns_ctx *cleandns)
 		bprint(cleandns->buf, len);
 
 		if (handle_remote_sock_recv(cleandns, cleandns->buf, len, (struct sockaddr *)&from_addr) != 0) {
-           loge("handle_remote_sock: handle_remote_sock_recv() error\n");
+           loge("handle_remote_udprecv: handle_remote_sock_recv() error\n");
            return -1;
        }
        else
            return 0;
     }
     else {
-        loge("handle_remote_sock: recvfrom() error\n");
+        loge("handle_remote_udprecv: recvfrom() error\n");
         return -1;
     }
 }
 
-static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *conn, int conn_index)
+static int handle_remote_tcprecv(cleandns_ctx* cleandns, req_t *req, conn_t *conn, int conn_index)
 {
 	dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
 	int nread;
@@ -1208,7 +1217,7 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 	if (!conn->recvbuf) {
 		conn->recvbuf = (char *)malloc(NS_PAYLOAD_SIZE);
 		if (!conn->recvbuf) {
-			loge("handle_remote_tcpsock(): alloc memory\n");
+			loge("tcp_recv(): alloc memory\n");
 			free_conn(conn);
 			return -1;
 		}
@@ -1226,6 +1235,69 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 
 		conn->recvbuf_size += nread;
 
+		if (conn->by_proxy && conn->status != CONN_PROXY_CONNECTED) {
+			proxy_state_t* proxy_state = conn->proxy_state;
+			struct sockaddr_in *to = (struct sockaddr_in*)(dns_server->addr->ai_addr);
+			logd("recv %d bytes from proxy\n", conn->recvbuf_size);
+			bprint(conn->recvbuf, conn->recvbuf_size);
+			switch (conn->status) {
+			case CONN_PROXY_HANKSHAKE_1:
+				if (conn->recvbuf_size == 2 && conn->recvbuf[0] == 0x5 && conn->recvbuf[1] == 0x0) {
+					conn->recvbuf_size = 0;
+					if (conn->sendbuf) {
+						loge("tcp_recv() error: stack overflow \n");
+						free_conn(conn);
+						return -1;
+					}
+					conn->sendbuf = (char*)malloc(16);
+					if (!conn->sendbuf) {
+						loge("tcp_recv() error: alloca \n");
+						free_conn(conn);
+						return -1;
+					}
+					memset(conn->sendbuf, 0, 16);
+					conn->sendbuf_size = 10;
+					conn->sendbuf[0] = 0x5;
+					conn->sendbuf[1] = 0x1;
+					conn->sendbuf[3] = 0x1;
+					memcpy(conn->sendbuf + 4, &to->sin_addr, 4);
+					*(conn->sendbuf + 8) = (to->sin_port & 0xff);
+					*(conn->sendbuf + 9) = ((to->sin_port >> 8) & 0xff);
+					conn->status = CONN_PROXY_HANKSHAKE_2;
+					return 0;
+				}
+				else {
+					loge("tcp_recv() error: reject by proxy server\n");
+					free_conn(conn);
+					return -1;
+				}
+				break;
+			case CONN_PROXY_HANKSHAKE_2:
+				if (conn->recvbuf_size == 10 && conn->recvbuf[0] == 0x5 && conn->recvbuf[3] == 0x1) {
+					conn->status = CONN_PROXY_CONNECTED;
+					conn->recvbuf_size = 0;
+					if (conn->sendbuf) {
+						loge("tcp_recv() error: stack overflow \n");
+						return -1;
+					}
+					conn->sendbuf = proxy_state->sendbuf;
+					conn->sendbuf_size = proxy_state->sendbuf_size;
+					proxy_state->sendbuf = NULL;
+					proxy_state->sendbuf_size = 0;
+					return 0;
+				}
+				else {
+					loge("tcp_recv() error: reject by proxy server\n");
+					free_conn(conn);
+					return -1;
+				}
+			default:
+				loge("tcp_recv() error: invalid status '%d' \n", conn->status);
+				free_conn(conn);
+				return -1;
+			}
+		}
+
 		if (conn->recvbuf_size > 2) {
 			stream_t s = {
 				.array = conn->recvbuf,
@@ -1235,7 +1307,7 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 			};
 			msglen = stream_readi16(&s);
 			if (msglen + 2 > NS_PAYLOAD_SIZE) {
-				loge("handle_remote_tcpsock(): too big payload size\n");
+				loge("tcp_recv(): too big payload size\n");
 				free_conn(conn);
 				return -1;
 			}
@@ -1249,7 +1321,7 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 				bprint(conn->recvbuf + 2, msglen);
 
 				if (handle_remote_sock_recv(cleandns, conn->recvbuf + 2, msglen, dns_server->addr->ai_addr) != 0) {
-					loge("handle_remote_tcpsock: handle_remote_sock_recv() error\n");
+					loge("tcp_recv(): handle_remote_sock_recv() error\n");
 					return -1;
 				}
 				else {
@@ -1257,7 +1329,7 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 				}
 			}
 			else if (msglen + 2 > conn->recvbuf_size) {
-				loge("handle_remote_tcpsock(): invalid payload\n");
+				loge("tcp_recv(): invalid payload\n");
 				free_conn(conn);
 				return -1;
 			}
@@ -1284,7 +1356,7 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 		return 0;
 	}
 	else if (nread == 0) {
-		loge("handle_remote_tcpsock: connection closed by server '%s'\n", get_addrname(dns_server->addr->ai_addr));
+		loge("tcp_recv: connection closed by server '%s'\n", get_addrname(dns_server->addr->ai_addr));
 		free_conn(conn);
 		return -1;
 	}
@@ -1292,12 +1364,12 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t *req, conn_t *con
 		int err = errno;
 		if (is_eagain(err)) {
 
-			logd("recv() EAGAIN (TCP) '%s'\n", get_addrname(dns_server->addr->ai_addr));
+			logd("tcp_recv() EAGAIN (TCP) '%s'\n", get_addrname(dns_server->addr->ai_addr));
 
 			return 0;
 		}
 		else {
-			loge("handle_remote_tcpsock: %s %d %s\n",
+			loge("tcp_recv: %s %d %s\n",
 				get_addrname(dns_server->addr->ai_addr), err, strerror(err));
 			free_conn(conn);
 			return -1;
@@ -1337,6 +1409,43 @@ static int tcp_send(cleandns_ctx* cleandns, conn_t* conn)
 	dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
 	int nsend;
 
+	if (conn->by_proxy && conn->status != CONN_PROXY_CONNECTED) {
+		proxy_state_t* proxy_state;
+		switch (conn->status) {
+		case CONN_CONNECTED:
+			proxy_state = (proxy_state_t*)malloc(sizeof(proxy_state_t));
+			if (!proxy_state) {
+				loge("tcp_send() error: alloca \n");
+				return -1;
+			}
+			proxy_state->sendbuf = conn->sendbuf;
+			proxy_state->sendbuf_size = conn->sendbuf_size;
+			conn->proxy_state = proxy_state;
+			conn->sendbuf = (char*)malloc(8);
+			if (!conn->sendbuf) {
+				loge("tcp_send() error: alloca \n");
+				return -1;
+			}
+			memset(conn->sendbuf, 0, 8);
+			conn->sendbuf_size = 3;
+			conn->sendbuf[0] = 0x5;
+			conn->sendbuf[1] = 0x1;
+			conn->status = CONN_PROXY_HANKSHAKE_1;
+			logd("send %d bytes to proxy\n", conn->sendbuf_size);
+			bprint(conn->sendbuf, conn->sendbuf_size);
+			break;
+		case CONN_PROXY_HANKSHAKE_1:
+			break;
+		case CONN_PROXY_HANKSHAKE_2:
+			logd("send %d bytes to proxy\n", conn->sendbuf_size);
+			bprint(conn->sendbuf, conn->sendbuf_size);
+			break;
+		default:
+			loge("tcp_send() error: invalid status '%d' \n", conn->status);
+			return -1;
+		}
+	}
+
 	nsend = send(conn->sock, conn->sendbuf, conn->sendbuf_size, 0);
 	if (nsend == -1) {
 		int err = errno;
@@ -1365,9 +1474,10 @@ static int tcp_send(cleandns_ctx* cleandns, conn_t* conn)
 	}
 }
 
-static int connect_server(conn_t *conn, dns_server_t *server)
+static int connect_server(cleandns_ctx* cleandns, conn_t *conn, dns_server_t *server)
 {
 	sock_t sock;
+	int rv;
 
 	sock = socket(server->addr->ai_family, SOCK_STREAM, IPPROTO_TCP);
 	if (sock == -1) {
@@ -1380,7 +1490,16 @@ static int connect_server(conn_t *conn, dns_server_t *server)
 		return -1;
 	}
 
-	if (connect(sock, server->addr->ai_addr, (int)server->addr->ai_addrlen) != 0) {
+	if (server->is_foreign && cleandns->proxy_server.addr) {
+		proxy_server_t* proxy = &cleandns->proxy_server;
+		rv = connect(sock, proxy->addr->ai_addr, (int)proxy->addr->ai_addrlen);
+		conn->by_proxy = 1;
+	}
+	else {
+		rv = connect(sock, server->addr->ai_addr, (int)server->addr->ai_addrlen);
+	}
+
+	if (rv != 0) {
 		int err = errno;
 		if (is_eagain(err)) {
 			conn->sock = sock;
