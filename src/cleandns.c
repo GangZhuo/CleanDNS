@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <getopt.h>
 #include <string.h>
 #include <stdint.h>
@@ -1426,10 +1427,36 @@ static int init_sockets(cleandns_ctx *cleandns)
 	return 0;
 }
 
+static void parse_url(char *s, char **protocol, char **host, char **port)
+{
+	char *p;
+
+	p = strstr(s, "://");
+	if (p) {
+		*protocol = s;
+		*p = '\0';
+		s = p + 3;
+	}
+	else {
+		*protocol = NULL;
+	}
+
+	p = strrchr(s, ':');
+	if (p) {
+		*port = p + 1;
+		*p = '\0';
+	}
+	else {
+		*port = NULL;
+	}
+
+	*host = s;
+}
+
 static int resolve_dns_server(cleandns_ctx *cleandns)
 {
 	struct addrinfo hints;
-	char *s, *ip, *port, *p;
+	char *s, *protocol, *ip, *port, *p;
 	int r;
 	dns_server_t* dns_server;
 
@@ -1441,31 +1468,27 @@ static int resolve_dns_server(cleandns_ctx *cleandns)
 
 		dns_server = cleandns->dns_servers + cleandns->dns_server_num;
 
-		if (strncmp(p, "tcp://", 6) == 0) {
+		parse_url(p, &protocol, &ip, &port);
+
+
+		if (protocol && strcmp(protocol, "tcp") == 0) {
 			dns_server->tcp = 1;
-			p += 6;
 		}
-		else if (strncmp(p, "udp://", 6) == 0) {
+		else if (!protocol || strcmp(protocol, "udp") == 0) {
 			dns_server->tcp = 0;
-			p += 6;
 		}
 		else {
-			dns_server->tcp = 0;
+			loge("invalid protocol: %s://%s:%s\n", protocol, ip, port);
+			free(s);
+			return -1;
 		}
+
+		if (!port || strlen(port) == 0)
+			port = "53";
 
 		memset(&hints, 0, sizeof(hints));
 		hints.ai_family = AF_INET;
 		hints.ai_socktype = dns_server->tcp ? SOCK_STREAM : SOCK_DGRAM;
-
-		ip = p;
-		port = strrchr(p, ':');
-		if (port) {
-			*port = '\0';
-			port++;
-		}
-		else {
-			port = "53";
-		}
 
 		if ((r = getaddrinfo(ip, port, &hints, &dns_server->addr)) != 0) {
 			loge("%s: %s:%s\n", gai_strerror(r), ip, port);
