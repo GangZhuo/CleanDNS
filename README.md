@@ -41,6 +41,16 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
 	# Start|Stop|Restart|Enable|Disable
 	/etc/init.d/cleandns [start|stop|restart|enable|disable]
 
+### Install (Android Termux)
+
+    git clone https://github.com/GangZhuo/CleanDNS.git
+	
+    cd CleanDNS
+	
+    make clean
+	
+    make LDFLAGS=-llog
+
 ### Install (Windows)
 
     1) Download source code from https://github.com/GangZhuo/CleanDNS.
