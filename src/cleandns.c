@@ -668,7 +668,7 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 			stream_t answers = STREAM_INIT();
 			get_questions(&questions, msg);
 			get_answers(&answers, msg);
-			logi("send msg to '%s': questions=%s, answers=%s\n",
+			logi("response to '%s': questions=%s, answers=%s\n",
 				get_addrname(to),
 				questions.array,
 				answers.array);
@@ -685,6 +685,19 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 	if (is_tcp) {
 		stream_writei16(&s, 0);
 	}
+	else if (dns_server && dns_server->is_foreign && cleandns->proxy_server.addr) {
+		stream_writei8(&s, 0);
+		stream_writei8(&s, 0);
+		stream_writei8(&s, 0);
+		stream_writei8(&s, 1);
+
+		stream_write(&s, &((struct sockaddr_in*)to)->sin_addr, 4);
+		stream_writei8(&s, (((struct sockaddr_in*)to)->sin_port & 0xff));
+		stream_writei8(&s, ((((struct sockaddr_in*)to)->sin_port >> 8) & 0xff));
+
+		to = cleandns->proxy_server.addr->ai_addr;
+		tolen = cleandns->proxy_server.addr->ai_addrlen;
+	}
 
 	if ((len = ns_serialize(&s, msg, compression)) <= 0) {
 		loge("send_nsmsg: Can't serialize the 'msg'\n");
@@ -696,7 +709,7 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 		stream_seti16(&s, 0, len);
 	}
 
-	logd("send data%s:\n", is_tcp ? " (TCP)" : "");
+	logd("send data to '%s' %s:\n", get_addrname(to), is_tcp ? " (TCP)" : "");
 	bprint(s.array, s.size);
 
 	if (is_tcp) {
@@ -1184,19 +1197,37 @@ static int handle_remote_udprecv(cleandns_ctx *cleandns)
 {
 	struct sockaddr_storage from_addr;
 	socklen_t from_addrlen = sizeof(struct sockaddr_storage);
+	char *buf = cleandns->buf;
+	int bufsize = sizeof(cleandns->buf);
 	int len;
 
 	memset(&from_addr, 0, sizeof(struct sockaddr_storage));
 
-	len = recvfrom(cleandns->remote_sock, cleandns->buf, NS_PAYLOAD_SIZE, 0,
+	len = recvfrom(cleandns->remote_sock, buf, bufsize, 0,
             (struct sockaddr *)&from_addr, &from_addrlen);
 
 	if (len > 0) {
 
-		logd("response data:\n");
-		bprint(cleandns->buf, len);
+		if (len < 10) {
+			loge("handle_remote_udprecv: invalid data\n");
+			return -1;
+		}
 
-		if (handle_remote_sock_recv(cleandns, cleandns->buf, len, (struct sockaddr *)&from_addr) != 0) {
+		logd("recv data:\n");
+		bprint(buf, len);
+
+		if (buf[0] == 0 && buf[1] == 0 && buf[2] == 0 && buf[3] == 01) { /* recv from proxy */
+			struct sockaddr_in *src_addr = (struct sockaddr*) &from_addr;
+			uint16_t src_port = 0;
+			memcpy(&src_addr->sin_addr, buf + 4, 4);
+			src_port = (buf[8] << 8) & 0xFF00;
+			src_port |= buf[9];
+			src_addr->sin_port = htons(src_port);
+			buf += 10;
+			len -= 10;
+		}
+
+		if (handle_remote_sock_recv(cleandns, buf, len, (struct sockaddr *)&from_addr) != 0) {
            loge("handle_remote_udprecv: handle_remote_sock_recv() error\n");
            return -1;
        }

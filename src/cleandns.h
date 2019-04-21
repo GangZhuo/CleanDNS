@@ -14,6 +14,7 @@ typedef int sock_t;
 
 #define MAX_DNS_SERVER 8
 #define MAX_NS_MSG (MAX_DNS_SERVER * 2)
+#define PROXY_HEAD_LEN	16
 
 #define CONN_CONNECTING			0
 #define CONN_CONNECTED			1
@@ -109,7 +110,7 @@ typedef struct cleandns_ctx {
 	subnet_t foreign_net;
 	sock_t listen_sock;
 	sock_t remote_sock;
-	char buf[NS_PAYLOAD_SIZE];
+	char buf[NS_PAYLOAD_SIZE + PROXY_HEAD_LEN];
 	rbtree_t queue;
 	proxy_server_t proxy_server;
 } cleandns_ctx;
