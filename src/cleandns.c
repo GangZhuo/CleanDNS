@@ -112,6 +112,7 @@ static int handle_remote_tcpsock(cleandns_ctx* cleandns, req_t* req, conn_t* con
 static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req);
 static char *get_addrname(struct sockaddr *addr);
 static int parse_netmask(net_mask_t *netmask, char *line);
+static int resolve_proxy_server(cleandns_ctx* cleandns);
 static void run_as_daemonize(cleandns_ctx* cleandns);
 static void open_syslog();
 static void close_syslog();
@@ -185,6 +186,9 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 
 	if (resolve_dns_server(&cleandns) != 0)
+		return EXIT_FAILURE;
+
+	if (cleandns.proxy && resolve_proxy_server(&cleandns) != 0)
 		return EXIT_FAILURE;
 
 	if (cleandns.compression) {
@@ -267,6 +271,9 @@ static void print_args(cleandns_ctx* cleandns)
 	logn("pollution detection: %s\n", cleandns->lazy ? "off" : "on");
 	logn("timeout: %d\n", cleandns->timeout);
 	logn("loglevel: %d\n", loglevel);
+	if (cleandns->proxy) {
+		logn("proxy: %s\n", cleandns->proxy);
+	}
 #ifndef WINDOWS
 	if (cleandns->daemonize) {
 		logn("pid file: %s\n", cleandns->pid_file);
@@ -410,9 +417,9 @@ static int do_loop(cleandns_ctx *cleandns)
 					}
 
 					if (FD_ISSET(conn->sock, &writeset)) {
-						if (!conn->connected) {
+						if (conn->status == CONN_CONNECTING) {
 							dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
-							conn->connected = 1;
+							conn->status = CONN_CONNECTED;
 							logd("connected to '%s' (TCP)(sock=%d)\n",
 								get_addrname(dns_server->addr->ai_addr), conn->sock);
 						}
@@ -691,6 +698,7 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 		}
 		conn_t* conn = &req->conns[req->conn_num++];
 		memset(conn, 0, sizeof(conn_t));
+		conn->status = CONN_CONNECTING;
 		conn->dns_server_index = dns_server_index;
 		conn->sendbuf = s.array;
 		conn->sendbuf_size = s.size;
@@ -701,7 +709,7 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 			free_conn(conn);
 			return -1;
 		}
-		else if (conn->connected) {
+		else if (conn->status == CONN_CONNECTED) {
 			if (tcp_send(cleandns, conn) == -1) {
 				loge("send_nsmsg: cannot send data to '%s' (TCP)\n", get_addrname(dns_server->addr->ai_addr));
 				free_conn(conn);
@@ -1384,7 +1392,7 @@ static int connect_server(conn_t *conn, dns_server_t *server)
 		return -1;
 	}
 
-	conn->connected = 1;
+	conn->status = CONN_CONNECTED;
 	conn->sock = sock;
 
 	logd("connected to '%s' (TCP)(sock=%d)\n",
@@ -1451,6 +1459,41 @@ static void parse_url(char *s, char **protocol, char **host, char **port)
 	}
 
 	*host = s;
+}
+
+static int resolve_proxy_server(cleandns_ctx* cleandns)
+{
+	struct addrinfo hints;
+	char *s, *protocol, *ip, *port;
+	int r;
+	proxy_server_t *proxy_server = &cleandns->proxy_server;
+
+	s = strdup(cleandns->proxy);
+
+	parse_url(s, &protocol, &ip, &port);
+
+	if (protocol && strcmp(protocol, "socks5") != 0) {
+		loge("only support 'socks5' proxy: %s://%s:%s\n", protocol, ip, port);
+		free(s);
+		return -1;
+	}
+
+	if (!port || strlen(port) == 0)
+		port = "1080";
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if ((r = getaddrinfo(ip, port, &hints, &proxy_server->addr)) != 0) {
+		loge("%s: %s:%s\n", gai_strerror(r), ip, port);
+		free(s);
+		return -1;
+	}
+
+	free(s);
+
+	return 0;
 }
 
 static int resolve_dns_server(cleandns_ctx *cleandns)
@@ -1831,6 +1874,12 @@ static int read_config_file(cleandns_ctx* cleandns, const char *config_file, int
 				cleandns->lazy = is_true_val(value);
 			}
 		}
+		else if (strcmp(name, "proxy") == 0 && strlen(value)) {
+			if (force || !cleandns->proxy) {
+				if (cleandns->proxy) free(cleandns->proxy);
+				cleandns->proxy = strdup(value);
+			}
+		}
 		else {
 			/*do nothing*/
 		}
@@ -1857,6 +1906,7 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 		{"config",    required_argument, NULL, 5},
 		{"launch_log",required_argument, NULL, 6},
 		{"lazy",      required_argument, NULL, 7},
+		{"proxy",     required_argument, NULL, 8},
 		{0, 0, 0, 0}
 	};
 
@@ -1885,6 +1935,10 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
         case 7:
             cleandns->lazy = 1;
             break;
+		case 8:
+			if (cleandns->proxy) free(cleandns->proxy);
+			cleandns->proxy = strdup(optarg);
+			break;
 		case 'h':
 			usage();
 			exit(0);
@@ -2019,10 +2073,19 @@ static void free_cleandns(cleandns_ctx *cleandns)
 	free(cleandns->foreign_ip);
 	free(cleandns->pid_file);
 	free(cleandns->log_file);
+	free(cleandns->proxy);
 
 	for (i = 0; i < cleandns->dns_server_num; i++) {
 		dns_server_t* dns_server = cleandns->dns_servers + i;
-		freeaddrinfo(dns_server->addr);
+		if (cleandns->proxy_server.addr) {
+			freeaddrinfo(dns_server->addr);
+			dns_server->addr = NULL;
+		}
+	}
+
+	if (cleandns->proxy_server.addr) {
+		freeaddrinfo(cleandns->proxy_server.addr);
+		cleandns->proxy_server.addr = NULL;
 	}
 
 	rbtree_each(&cleandns->queue, cb_free_req, NULL);

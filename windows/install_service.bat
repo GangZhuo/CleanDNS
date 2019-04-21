@@ -20,7 +20,7 @@ if not exist "%CURR_PATH%%CONFIG_FILE%" (
 		echo 	option compression '1'
 		echo 	option timeout '5'
 		echo 	option log_file '%CURR_PATH%cleandns.log'
-		echo 	option log_level '5'
+		echo 	#option proxy 'socks5://127.0.0.1:1080'
 	)> "%CURR_PATH%%CONFIG_FILE%"
 )
 

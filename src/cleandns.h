@@ -15,6 +15,9 @@ typedef int sock_t;
 #define MAX_DNS_SERVER 8
 #define MAX_NS_MSG (MAX_DNS_SERVER * 2)
 
+#define CONN_CONNECTING	0
+#define CONN_CONNECTED 1
+
 #include "rbtree.h"
 #include "ns_msg.h"
 
@@ -24,7 +27,7 @@ extern "C" {
 
 typedef struct conn_t {
 	sock_t sock;
-	int connected;
+	int status;
 	int dns_server_index;
 	char* sendbuf;
 	int sendbuf_size;
@@ -69,6 +72,10 @@ typedef struct dns_server_t {
 	int tcp;
 } dns_server_t;
 
+typedef struct proxy_server_t {
+	struct addrinfo *addr;
+} proxy_server_t;
+
 typedef struct cleandns_ctx {
 	char *listen_addr;
 	char *listen_port;
@@ -82,6 +89,7 @@ typedef struct cleandns_ctx {
 	char* log_file;
 	int daemonize;
     int lazy;
+	char *proxy;
 	net_list_t chnroute_list;
 	dns_server_t dns_servers[MAX_DNS_SERVER];
 	int dns_server_num;
@@ -91,6 +99,7 @@ typedef struct cleandns_ctx {
 	sock_t remote_sock;
 	char buf[NS_PAYLOAD_SIZE];
 	rbtree_t queue;
+	proxy_server_t proxy_server;
 } cleandns_ctx;
 
 #ifdef __cplusplus
