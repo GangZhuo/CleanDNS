@@ -691,12 +691,12 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 		stream_writei8(&s, 0);
 		stream_writei8(&s, 1);
 
-		stream_write(&s, &((struct sockaddr_in*)to)->sin_addr, 4);
+		stream_write(&s, (char*)(&((struct sockaddr_in*)to)->sin_addr), 4);
 		stream_writei8(&s, (((struct sockaddr_in*)to)->sin_port & 0xff));
 		stream_writei8(&s, ((((struct sockaddr_in*)to)->sin_port >> 8) & 0xff));
 
 		to = cleandns->proxy_server.addr->ai_addr;
-		tolen = cleandns->proxy_server.addr->ai_addrlen;
+		tolen = (socklen_t)cleandns->proxy_server.addr->ai_addrlen;
 	}
 
 	if ((len = ns_serialize(&s, msg, compression)) <= 0) {
@@ -1217,7 +1217,7 @@ static int handle_remote_udprecv(cleandns_ctx *cleandns)
 		bprint(buf, len);
 
 		if (buf[0] == 0 && buf[1] == 0 && buf[2] == 0 && buf[3] == 01) { /* recv from proxy */
-			struct sockaddr_in *src_addr = (struct sockaddr*) &from_addr;
+			struct sockaddr_in *src_addr = (struct sockaddr_in*) &from_addr;
 			uint16_t src_port = 0;
 			memcpy(&src_addr->sin_addr, buf + 4, 4);
 			src_port = (buf[8] << 8) & 0xFF00;
