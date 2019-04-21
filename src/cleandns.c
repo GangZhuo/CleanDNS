@@ -2280,6 +2280,8 @@ Options:\n\
   --log_level=LOG_LEVEL log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
   --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.\n\
   --lazy                disable pollution detection.\n\
+  --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only avalidate on foreign dns server.\n\
+                        only support socks5 with no authentication.\n\
   -v                    verbose logging.\n\
   -h                    show this help message and exit.\n\
   -V                    print version and exit.\n\
