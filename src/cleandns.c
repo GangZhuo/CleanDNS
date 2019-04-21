@@ -2253,11 +2253,11 @@ CLEANDNS_NAME " " CLEANDNS_VERSION "\n\
 \n\
 Usage:\n\
 \n\
-cleandns [-l CHINA_IP] [-f FOREIGN_IP] [-b BIND_ADDR]\n\
-         [-p BIND_PORT] [-c CHNROUTE_FILE] [-s DNS] [-t TIMEOUT]\n\
+cleandns [-c CHNROUTE_FILE] [-l CHINA_IP] [-f FOREIGN_IP]\n\
+         [-b BIND_ADDR] [-p BIND_PORT] [-s DNS] [-t TIMEOUT] [-m]\n\
+         [--config=CONFIG_PATH] [--daemon] [--pid=PID_FILE_PATH]\n\
          [--log=LOG_FILE_PATH] [--log_level=LOG_LEVEL]\n\
-         [--config=CONFIG_PATH] [--pid=PID_FILE_PATH]\n\
-         [--daemon] [-m] [-v] [-V] [-h]\n\
+         [--proxy=PROXY_URL] [-v] [-V] [-h]\n\
 \n\
 Forward DNS requests with ECS (edns-client-subnet) support.\n\
 \n\

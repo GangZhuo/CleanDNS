@@ -14,15 +14,15 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
 
     $>cleandns.exe -h
     
-    CleanDNS 0.3.1
+    CleanDNS 0.4.1
     
     Usage:
     
-    cleandns [-l CHINA_IP] [-f FOREIGN_IP] [-b BIND_ADDR]
-             [-p BIND_PORT] [-c CHNROUTE_FILE] [-s DNS] [-t TIMEOUT]
+    cleandns [-c CHNROUTE_FILE] [-l CHINA_IP] [-f FOREIGN_IP]
+             [-b BIND_ADDR] [-p BIND_PORT] [-s DNS] [-t TIMEOUT] [-m]
+             [--config=CONFIG_PATH] [--daemon] [--pid=PID_FILE_PATH]
              [--log=LOG_FILE_PATH] [--log_level=LOG_LEVEL]
-             [--config=CONFIG_PATH] [--pid=PID_FILE_PATH]
-             [--daemon] [-m] [-v] [-V] [-h]
+             [--proxy=PROXY_URL] [-v] [-V] [-h]
     
     Forward DNS requests with ECS (edns-client-subnet) support.
     
@@ -45,13 +45,12 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
       --log_level=LOG_LEVEL log level, range: [0, 7], default: 5.
       --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.
       --lazy                disable pollution detection.
-	  --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only avalidate on foreign dns server.
+      --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only avalidate on foreign dns server.
                             only support socks5 with no authentication.
       -v                    verbose logging.
       -h                    show this help message and exit.
       -V                    print version and exit.
     
-    Online help: <https://github.com/GangZhuo/CleanDNS>
 
 ### Install
 
