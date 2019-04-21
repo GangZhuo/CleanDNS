@@ -9,6 +9,49 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
 #### Travis CI
 
   [![Travis CI](https://travis-ci.org/GangZhuo/CleanDNS.svg?branch=master)](https://travis-ci.org/GangZhuo/CleanDNS)
+	
+### Usage
+
+    $>cleandns.exe -h
+    
+    CleanDNS 0.3.1
+    
+    Usage:
+    
+    cleandns [-l CHINA_IP] [-f FOREIGN_IP] [-b BIND_ADDR]
+             [-p BIND_PORT] [-c CHNROUTE_FILE] [-s DNS] [-t TIMEOUT]
+             [--log=LOG_FILE_PATH] [--log_level=LOG_LEVEL]
+             [--config=CONFIG_PATH] [--pid=PID_FILE_PATH]
+             [--daemon] [-m] [-v] [-V] [-h]
+    
+    Forward DNS requests with ECS (edns-client-subnet) support.
+    
+    Options:
+    
+      -l CHINA_IP           china ip address, e.g. 114.114.114.114/24.
+      -f FOREIGN_IP         foreign ip address, e.g. 8.8.8.8/24.
+      -c CHNROUTE_FILE      path to china route file, default: chnroute.txt.
+      -b BIND_ADDR          address that listens, default: 0.0.0.0.
+      -p BIND_PORT          port that listens, default: 5354.
+      -s DNS                DNS server to use, default: 8.8.8.8:53,114.114.114.114:53.
+                            tcp://IP[:PORT] means forward request to upstream by TCP protocol,
+                            [udp://]IP[:PORT] means forward request to upstream by UDP protocol,
+                            default forward by UDP protocol, and default port of upstream is 53.
+      -m                    use DNS compression pointer mutation, only avalidate on foreign dns server.
+      -t TIMEOUT            timeout, default: 5.
+      --daemon              daemonize.
+      --pid=PID_FILE_PATH   pid file, default: /var/run/cleandns.pid, only avalidate on daemonize.
+      --log=LOG_FILE_PATH   log file, only avalidate on daemonize.
+      --log_level=LOG_LEVEL log level, range: [0, 7], default: 5.
+      --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.
+      --lazy                disable pollution detection.
+	  --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only avalidate on foreign dns server.
+                            only support socks5 with no authentication.
+      -v                    verbose logging.
+      -h                    show this help message and exit.
+      -V                    print version and exit.
+    
+    Online help: <https://github.com/GangZhuo/CleanDNS>
 
 ### Install
 
@@ -70,49 +113,6 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
     6) Press WIN+R, type 'services.msc', and press <Enter>， Start/Restart CleanDNS on right panel.
     
     7) Right click D:\CleanDNS\uninstall_service.bat, and click Run as administrator to uninstall.	
-	
-### Usage
-
-    $>cleandns.exe -h
-    
-    CleanDNS 0.3.1
-    
-    Usage:
-    
-    cleandns [-l CHINA_IP] [-f FOREIGN_IP] [-b BIND_ADDR]
-             [-p BIND_PORT] [-c CHNROUTE_FILE] [-s DNS] [-t TIMEOUT]
-             [--log=LOG_FILE_PATH] [--log_level=LOG_LEVEL]
-             [--config=CONFIG_PATH] [--pid=PID_FILE_PATH]
-             [--daemon] [-m] [-v] [-V] [-h]
-    
-    Forward DNS requests with ECS (edns-client-subnet) support.
-    
-    Options:
-    
-      -l CHINA_IP           china ip address, e.g. 114.114.114.114/24.
-      -f FOREIGN_IP         foreign ip address, e.g. 8.8.8.8/24.
-      -c CHNROUTE_FILE      path to china route file, default: chnroute.txt.
-      -b BIND_ADDR          address that listens, default: 0.0.0.0.
-      -p BIND_PORT          port that listens, default: 5354.
-      -s DNS                DNS server to use, default: 8.8.8.8:53,114.114.114.114:53.
-                            tcp://IP[:PORT] means forward request to upstream by TCP protocol,
-                            [udp://]IP[:PORT] means forward request to upstream by UDP protocol,
-                            default forward by UDP protocol, and default port of upstream is 53.
-      -m                    use DNS compression pointer mutation, only avalidate on foreign dns server.
-      -t TIMEOUT            timeout, default: 5.
-      --daemon              daemonize.
-      --pid=PID_FILE_PATH   pid file, default: /var/run/cleandns.pid, only avalidate on daemonize.
-      --log=LOG_FILE_PATH   log file, only avalidate on daemonize.
-      --log_level=LOG_LEVEL log level, range: [0, 7], default: 5.
-      --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.
-      --lazy                disable pollution detection.
-	  --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only avalidate on foreign dns server.
-                            only support socks5 with no authentication.
-      -v                    verbose logging.
-      -h                    show this help message and exit.
-      -V                    print version and exit.
-    
-    Online help: <https://github.com/GangZhuo/CleanDNS>
 
 ### Example
 
