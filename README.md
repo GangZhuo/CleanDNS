@@ -139,7 +139,7 @@ Remove `-l` and `-f` to disable "edns-client-subnet".
 Test if it works:
 
 ```bash
-$ dig @127.0.0.1 www.youtube.com
+$ dig @127.0.0.1 -p 5354 www.youtube.com
 ; <<>> DiG 9.11.1 <<>> www.youtube.com
 ;; global options: +cmd
 ;; Got answer:
