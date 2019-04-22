@@ -2272,15 +2272,15 @@ Options:\n\
                         tcp://IP[:PORT] means forward request to upstream by TCP protocol,\n\
                         [udp://]IP[:PORT] means forward request to upstream by UDP protocol,\n\
                         default forward by UDP protocol, and default port of upstream is 53.\n\
-  -m                    use DNS compression pointer mutation, only avalidate on foreign dns server.\n\
+  -m                    use DNS compression pointer mutation, only available on foreign dns server.\n\
   -t TIMEOUT            timeout, default: " DEFAULT_TIMEOUT ".\n\
   --daemon              daemonize.\n\
-  --pid=PID_FILE_PATH   pid file, default: " DEFAULT_PID_FILE ", only avalidate on daemonize.\n\
-  --log=LOG_FILE_PATH   log file, only avalidate on daemonize.\n\
+  --pid=PID_FILE_PATH   pid file, default: " DEFAULT_PID_FILE ", only available on daemonize.\n\
+  --log=LOG_FILE_PATH   log file, only available on daemonize.\n\
   --log_level=LOG_LEVEL log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
   --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.\n\
   --lazy                disable pollution detection.\n\
-  --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only avalidate on foreign dns server.\n\
+  --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only available on foreign dns server.\n\
                         only support socks5 with no authentication.\n\
   -v                    verbose logging.\n\
   -h                    show this help message and exit.\n\
