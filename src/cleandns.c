@@ -2276,7 +2276,7 @@ Options:\n\
   -t TIMEOUT            timeout, default: " DEFAULT_TIMEOUT ".\n\
   --daemon              daemonize.\n\
   --pid=PID_FILE_PATH   pid file, default: " DEFAULT_PID_FILE ", only available on daemonize.\n\
-  --log=LOG_FILE_PATH   log file, only available on daemonize.\n\
+  --log=LOG_FILE_PATH   write log to a file.\n\
   --log-level=LOG_LEVEL log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
   --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.\n\
   --lazy                disable pollution detection.\n\

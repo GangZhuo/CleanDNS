@@ -41,7 +41,7 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
       -t TIMEOUT            timeout, default: 5.
       --daemon              daemonize.
       --pid=PID_FILE_PATH   pid file, default: /var/run/cleandns.pid, only available on daemonize.
-      --log=LOG_FILE_PATH   log file, only available on daemonize.
+      --log=LOG_FILE_PATH   write log to a file.
       --log-level=LOG_LEVEL log level, range: [0, 7], default: 5.
       --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.
       --lazy                disable pollution detection.
