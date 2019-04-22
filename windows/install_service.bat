@@ -24,7 +24,7 @@ if not exist "%CURR_PATH%%CONFIG_FILE%" (
 	)> "%CURR_PATH%%CONFIG_FILE%"
 )
 
-sc create "%SERVICE_NAME%" binpath= "\"%CURR_PATH%cleandns.exe\" --daemon --config=\"%CURR_PATH%%CONFIG_FILE%\" --launch_log=\"%CURR_PATH%cleandns_launch_log.log\"" displayname= "%SERVICE_NAME%" depend= Tcpip start= auto  
+sc create "%SERVICE_NAME%" binpath= "\"%CURR_PATH%cleandns.exe\" --daemon --config=\"%CURR_PATH%%CONFIG_FILE%\" --launch-log=\"%CURR_PATH%cleandns-launch-log.log\"" displayname= "%SERVICE_NAME%" depend= Tcpip start= auto  
 
 sc description "%SERVICE_NAME%" "%SERVICE_DESCRIPTION%"
 

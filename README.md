@@ -21,7 +21,7 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
     cleandns [-c CHNROUTE_FILE] [-l CHINA_IP] [-f FOREIGN_IP]
              [-b BIND_ADDR] [-p BIND_PORT] [-s DNS] [-t TIMEOUT] [-m]
              [--config=CONFIG_PATH] [--daemon] [--pid=PID_FILE_PATH]
-             [--log=LOG_FILE_PATH] [--log_level=LOG_LEVEL]
+             [--log=LOG_FILE_PATH] [--log-level=LOG_LEVEL]
              [--proxy=PROXY_URL] [-v] [-V] [-h]
     
     Forward DNS requests with ECS (edns-client-subnet) support.
@@ -37,15 +37,15 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
                             tcp://IP[:PORT] means forward request to upstream by TCP protocol,
                             [udp://]IP[:PORT] means forward request to upstream by UDP protocol,
                             default forward by UDP protocol, and default port of upstream is 53.
-      -m                    use DNS compression pointer mutation, only avalidate on foreign dns server.
+      -m                    use DNS compression pointer mutation, only available on foreign dns server.
       -t TIMEOUT            timeout, default: 5.
       --daemon              daemonize.
-      --pid=PID_FILE_PATH   pid file, default: /var/run/cleandns.pid, only avalidate on daemonize.
-      --log=LOG_FILE_PATH   log file, only avalidate on daemonize.
-      --log_level=LOG_LEVEL log level, range: [0, 7], default: 5.
+      --pid=PID_FILE_PATH   pid file, default: /var/run/cleandns.pid, only available on daemonize.
+      --log=LOG_FILE_PATH   log file, only available on daemonize.
+      --log-level=LOG_LEVEL log level, range: [0, 7], default: 5.
       --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.
       --lazy                disable pollution detection.
-      --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only avalidate on foreign dns server.
+      --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only available on foreign dns server.
                             only support socks5 with no authentication.
       -v                    verbose logging.
       -h                    show this help message and exit.

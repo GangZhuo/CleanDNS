@@ -2055,9 +2055,9 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 		{"daemon",    no_argument,       NULL, 1},
 		{"pid",       required_argument, NULL, 2},
 		{"log",       required_argument, NULL, 3},
-		{"log_level", required_argument, NULL, 4},
+		{"log-level", required_argument, NULL, 4},
 		{"config",    required_argument, NULL, 5},
-		{"launch_log",required_argument, NULL, 6},
+		{"launch-log",required_argument, NULL, 6},
 		{"lazy",      required_argument, NULL, 7},
 		{"proxy",     required_argument, NULL, 8},
 		{0, 0, 0, 0}
@@ -2256,7 +2256,7 @@ Usage:\n\
 cleandns [-c CHNROUTE_FILE] [-l CHINA_IP] [-f FOREIGN_IP]\n\
          [-b BIND_ADDR] [-p BIND_PORT] [-s DNS] [-t TIMEOUT] [-m]\n\
          [--config=CONFIG_PATH] [--daemon] [--pid=PID_FILE_PATH]\n\
-         [--log=LOG_FILE_PATH] [--log_level=LOG_LEVEL]\n\
+         [--log=LOG_FILE_PATH] [--log-level=LOG_LEVEL]\n\
          [--proxy=PROXY_URL] [-v] [-V] [-h]\n\
 \n\
 Forward DNS requests with ECS (edns-client-subnet) support.\n\
@@ -2277,7 +2277,7 @@ Options:\n\
   --daemon              daemonize.\n\
   --pid=PID_FILE_PATH   pid file, default: " DEFAULT_PID_FILE ", only available on daemonize.\n\
   --log=LOG_FILE_PATH   log file, only available on daemonize.\n\
-  --log_level=LOG_LEVEL log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
+  --log-level=LOG_LEVEL log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
   --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.\n\
   --lazy                disable pollution detection.\n\
   --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only available on foreign dns server.\n\
