@@ -70,6 +70,8 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
 	
     make menuconfig                            # Select Network/CleanDNS
 	
+    make V=99 package/CleanDNS/openwrt/clean
+    
     make V=99 package/CleanDNS/openwrt/compile
     
     # Output file should be at OpenWrt-SDK-***/bin/packages/<arch>/base/CleanDNS-*.ipk
