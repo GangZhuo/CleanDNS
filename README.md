@@ -9,7 +9,78 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
 #### Travis CI
 
 [![Travis CI](https://travis-ci.org/GangZhuo/CleanDNS.svg?branch=master)](https://travis-ci.org/GangZhuo/CleanDNS)
-	
+
+## Install
+
+### Linux
+
+```bash
+git clone https://github.com/GangZhuo/CleanDNS.git
+
+cd CleanDNS
+
+make clean
+
+make
+```
+
+### OpenWRT
+
+```bash
+cd OpenWrt-SDK-***
+
+git clone https://github.com/GangZhuo/CleanDNS.git package/CleanDNS
+
+# Select Network/CleanDNS
+make menuconfig
+
+# Output file should be at OpenWrt-SDK-***/bin/packages/<arch>/base/CleanDNS-*.ipk
+make V=99 package/CleanDNS/openwrt/{clean,compile}
+
+# Install on OpenWrt
+opkg install CleanDNS_*.ipk
+
+# Edit your config file '/etc/config/cleandns', then restart '/etc/init.d/cleandns restart'.
+vim /etc/config/cleandns
+
+# Start|Stop|Restart|Enable|Disable
+/etc/init.d/cleandns [start|stop|restart|enable|disable]
+```
+
+### Android (Termux)
+
+```bash
+git clone https://github.com/GangZhuo/CleanDNS.git
+
+cd CleanDNS
+
+make clean
+
+make LDFLAGS=-llog
+```
+
+### Windows
+
+```
+1) Download source code from https://github.com/GangZhuo/CleanDNS.
+
+2) Open CleanDNS/windows/cleandns.sln with visual studio 2019, build project.
+
+3) Copy build result (cleandns.exe) with CleanDNS/windows/install_service.bat,
+   CleanDNS/windows/uninstall_service.bat and chnroute.txt to target directory
+   (e.g. D:\CleanDNS\).
+
+4) Right click D:\CleanDNS\install_service.bat, and click Run as administrator
+   to install CleanDNS as service.
+
+5) Edit your config file D:\CleanDNS\cleandns.config， which should be generate
+   automatic after installed service.
+
+6) Press WIN+R, type 'services.msc', and press <Enter>， Start/Restart CleanDNS on right panel.
+
+7) Right click D:\CleanDNS\uninstall_service.bat, and click Run as administrator to uninstall.
+```
+
 ## Usage
 
 ```
@@ -101,78 +172,7 @@ youtube-ui-china.l.google.com. 95 IN	A	74.125.203.101
 
 See [About chnroute] on [ChinaDNS].
 
-## Install
-
-### Linux
-
-```bash
-git clone https://github.com/GangZhuo/CleanDNS.git
-
-cd CleanDNS
-
-make clean
-
-make
-```
-
-### OpenWRT
-
-```bash
-cd OpenWrt-SDK-***
-
-git clone https://github.com/GangZhuo/CleanDNS.git package/CleanDNS
-
-# Select Network/CleanDNS
-make menuconfig
-
-# Output file should be at OpenWrt-SDK-***/bin/packages/<arch>/base/CleanDNS-*.ipk
-make V=99 package/CleanDNS/openwrt/{clean,compile}
-
-# Install on OpenWrt
-opkg install CleanDNS_*.ipk
-
-# Edit your config file '/etc/config/cleandns', then restart '/etc/init.d/cleandns restart'.
-vim /etc/config/cleandns
-
-# Start|Stop|Restart|Enable|Disable
-/etc/init.d/cleandns [start|stop|restart|enable|disable]
-```
-
-### Android (Termux)
-
-```bash
-git clone https://github.com/GangZhuo/CleanDNS.git
-
-cd CleanDNS
-
-make clean
-
-make LDFLAGS=-llog
-```
-
-### Windows
-
-```
-1) Download source code from https://github.com/GangZhuo/CleanDNS.
-
-2) Open CleanDNS/windows/cleandns.sln with visual studio 2019, build project.
-
-3) Copy build result (cleandns.exe) with CleanDNS/windows/install_service.bat,
-   CleanDNS/windows/uninstall_service.bat and chnroute.txt to target directory
-   (e.g. D:\CleanDNS\).
-
-4) Right click D:\CleanDNS\install_service.bat, and click Run as administrator
-   to install CleanDNS as service.
-
-5) Edit your config file D:\CleanDNS\cleandns.config， which should be generate
-   automatic after installed service.
-
-6) Press WIN+R, type 'services.msc', and press <Enter>， Start/Restart CleanDNS on right panel.
-
-7) Right click D:\CleanDNS\uninstall_service.bat, and click Run as administrator to uninstall.
-```
-
-### References
+## References
 
 * [ChinaDNS]
 * [RFC 1035 DOMAIN NAMES - IMPLEMENTATION AND SPECIFICATION]
