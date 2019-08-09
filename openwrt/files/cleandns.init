@@ -2,68 +2,23 @@
 # cleandns init script
 
 START=90
-STOP=15
 
-NAME=cleandns
+USE_PROCD=1
 
-uci_get()
-{
-    local ret=$(uci get $NAME.@cfg[0].$1 2>/dev/null)
-    echo ${ret}
+start_cleandns() {
+	procd_open_instance
+	procd_set_param respawn
+	procd_set_param stderr 1
+	procd_set_param nice -5
+	procd_set_param limits nofile="65535 65535"
+	[ -e /proc/sys/kernel/core_pattern ] && {
+		procd_append_param limits core="unlimited"
+	}
+	procd_set_param command /usr/bin/cleandns
+	procd_append_param command --config /etc/config/cleandns
+	procd_close_instance
 }
 
-uci_bool()
-{
-    case "$(uci_get $1)" in
-        1|on|true|yes|enabled) echo "-m";;
-    esac
+start_service() {
+	start_cleandns
 }
-
-start()
-{
-    local bind_addr=$(uci_get bind_addr)
-    local bind_port=$(uci_get bind_port)
-    local chnroute=$(uci_get chnroute)
-    local china_ip=$(uci_get china_ip)
-    local foreign_ip=$(uci_get foreign_ip)
-    local dns_server=$(uci_get dns_server)
-    local compr=$(uci_bool compression)
-    local pid_file=$(uci_get pid_file)
-    local timeout=$(uci_get timeout)
-    local log_level=$(uci_get log_level)
-
-    if [ -f $pid_file ]
-        then
-            echo "already started: $pid_file exists"
-            exit 1
-    fi
-
-    cleandns \
-        -c $chnroute \
-        -l $china_ip \
-        -f $foreign_ip \
-        -s $dns_server \
-        -b $bind_addr \
-        -p $bind_port \
-        $compr \
-		-t $timeout \
-		--log_level=$log_level \
-        --daemon \
-        --pid=$pid_file 
-
-}
-
-stop()
-{
-    local pid_file=$(uci_get pid_file)
-
-    kill `cat $pid_file 2>/dev/null` 2>/dev/null
-    rm $pid_file 2>/dev/null
-}
-
-restart()
-{
-    stop
-    start
-}
-
