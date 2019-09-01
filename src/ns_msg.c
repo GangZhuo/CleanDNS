@@ -773,23 +773,21 @@ ns_opt_t* ns_optrr_set_opt(ns_rr_t* rr, uint16_t code, uint16_t len, const char 
 int ns_ecs_parse_subnet(struct sockaddr *addr /*out*/, int *pmask /*out*/, const char *str /*in*/)
 {
 	char buf[INET6_ADDRSTRLEN], *sp_pos;
-	int mask;
+	int mask = -1;
+	int is_ipv6;
 
 	strncpy(buf, str, INET6_ADDRSTRLEN);
 	buf[INET6_ADDRSTRLEN - 1] = '\0';
 
-	sp_pos = strchr(buf, '/');
+	sp_pos = strrchr(buf, '/');
 	if (sp_pos) {
 		*sp_pos = 0;
 		mask = atoi(sp_pos + 1);
 	}
-	else {
-		mask = 0xff;
-	}
 
-	sp_pos = strchr(buf, ':');
+	is_ipv6 = buf[0] =='[' || strchr(buf, ':');
 
-	if (sp_pos) {
+	if (is_ipv6) {
 		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)addr;
 		struct in6_addr *ip = &(addr6->sin6_addr);
 		if (inet_pton(AF_INET6, buf, ip) == 0) {
@@ -797,6 +795,7 @@ int ns_ecs_parse_subnet(struct sockaddr *addr /*out*/, int *pmask /*out*/, const
 			return -1;
 		}
 		addr6->sin6_family = AF_INET6;
+		if (mask == -1) mask = 128;
 	}
 	else {
 		struct sockaddr_in *addr4 = (struct sockaddr_in *)addr;
@@ -806,6 +805,7 @@ int ns_ecs_parse_subnet(struct sockaddr *addr /*out*/, int *pmask /*out*/, const
 			return -1;
 		}
 		addr4->sin_family = AF_INET;
+		if (mask == -1) mask = 32;
 	}
 
 	*pmask = mask;
@@ -813,17 +813,19 @@ int ns_ecs_parse_subnet(struct sockaddr *addr /*out*/, int *pmask /*out*/, const
 	return 0;
 }
 
-int ns_set_ecs(ns_opt_t *opt, struct sockaddr *addr, int srcprefix, int scopeprefix)
+/* IPv4 */
+static int ns_set_ecs4(ns_opt_t* opt, struct sockaddr_in* addr, int srcprefix, int scopeprefix)
 {
 	stream_t s = STREAM_INIT();
-	uint8_t *optdata;
+	uint8_t* optdata;
 	int addrlen;
-	struct sockaddr_in *addr4;
-
-	if (addr->sa_family != AF_INET) {
-		loge("ns_set_ecs: Only support IPv4\n");
-		return -1;
-	}
+	uint8_t saddr[4] = {
+		addr->sin_addr.s_net,
+		addr->sin_addr.s_host,
+		addr->sin_addr.s_lh,
+		addr->sin_addr.s_impno,
+	};
+	uint8_t mask = 0xff;
 
 	addrlen = srcprefix / 8;
 	if (srcprefix % 8)
@@ -832,28 +834,88 @@ int ns_set_ecs(ns_opt_t *opt, struct sockaddr *addr, int srcprefix, int scopepre
 	if (addrlen > 4)
 		addrlen = 4;
 
-	addr4 = (struct sockaddr_in *)addr;
-
 	optdata = realloc(opt->data, 4 + addrlen);
 	if (optdata == NULL) {
 		return -1;
+	}
+	
+	if (srcprefix % 8) {
+		mask <<= (8 - (srcprefix % 8));
+		saddr[addrlen - 1] &= mask;
 	}
 
 	opt->length = 4 + addrlen;
 	opt->data = optdata;
 	s.array = opt->data;
 	s.cap = opt->length;
-	if (stream_writei16(&s, addr->sa_family == AF_INET6 
-		? ADDR_FAMILY_NUM_IP6 : ADDR_FAMILY_NUM_IP) != 2)
+	if (stream_writei16(&s, ADDR_FAMILY_NUM_IP) != 2)
 		return -1;
 	if (stream_writei8(&s, srcprefix) != 1)
 		return -1;
 	if (stream_writei8(&s, scopeprefix) != 1)
 		return -1;
-	if (stream_write(&s, (char *)(&(addr4->sin_addr)), addrlen) != addrlen)
+	if (stream_write(&s, saddr, addrlen) != addrlen)
 		return -1;
 
 	return 0;
+}
+
+/* IPv6 */
+static int ns_set_ecs6(ns_opt_t* opt, struct sockaddr_in6* addr, int srcprefix, int scopeprefix)
+{
+	stream_t s = STREAM_INIT();
+	uint8_t* optdata;
+	int addrlen;
+	uint8_t saddr[16];
+	uint8_t mask = 0xff;
+
+	addrlen = srcprefix / 8;
+	if (srcprefix % 8)
+		addrlen++;
+
+	if (addrlen > 16)
+		addrlen = 16;
+
+	optdata = realloc(opt->data, 4 + addrlen);
+	if (optdata == NULL) {
+		return -1;
+	}
+
+	memcpy(saddr, addr->sin6_addr.s6_addr, 16);
+
+	if (srcprefix % 8) {
+		mask <<= (8 - (srcprefix % 8));
+		saddr[addrlen - 1] &= mask;
+	}
+
+	opt->length = 4 + addrlen;
+	opt->data = optdata;
+	s.array = opt->data;
+	s.cap = opt->length;
+	if (stream_writei16(&s, ADDR_FAMILY_NUM_IP6) != 2)
+		return -1;
+	if (stream_writei8(&s, srcprefix) != 1)
+		return -1;
+	if (stream_writei8(&s, scopeprefix) != 1)
+		return -1;
+	if (stream_write(&s, saddr, addrlen) != addrlen)
+		return -1;
+
+	return 0;
+}
+
+int ns_set_ecs(ns_opt_t *opt, struct sockaddr *addr, int srcprefix, int scopeprefix)
+{
+	if (addr->sa_family == AF_INET) {
+		return ns_set_ecs4(opt, (struct sockaddr_in*)addr, srcprefix, scopeprefix);
+	}
+	else if (addr->sa_family == AF_INET6) {
+		return ns_set_ecs6(opt, (struct sockaddr_in6*)addr, srcprefix, scopeprefix);
+	}
+	else {
+		loge("ns_set_ecs: No support family %d\n", addr->sa_family);
+		return -1;
+	}
 }
 
 int ns_optrr_set_ecs(ns_rr_t *rr, struct sockaddr *addr, int srcprefix, int scopeprefix)
@@ -1327,8 +1389,22 @@ static ns_ecs_t* ns_parse_ect(ns_ecs_t *ecs, char *data, int len)
 	if (ecs->src_prefix_len % 8)
 		addrlen++;
 
-	if (addrlen > 4)
+	if (ecs->family == ADDR_FAMILY_NUM_IP) {
+		if (addrlen > 4) {
+			/* invalid src_prefix_len */
+			return NULL;
+		}
+	}
+	else if (ecs->family == ADDR_FAMILY_NUM_IP6) {
+		if (addrlen > 16) {
+			/* invalid src_prefix_len */
+			return NULL;
+		}
+	}
+	else {
+		/* invalid family */
 		return NULL;
+	}
 
 	check_size(addrlen);
 
@@ -1360,9 +1436,18 @@ static void ns_rdata_print_edns(ns_rr_t *rr)
 					ns_ecs_t ecs;
 					if (ns_parse_ect(&ecs, opt->data, opt->length)) {
 						char ipname[INET6_ADDRSTRLEN];
-						struct in_addr* addr = &ecs.subnet;
+						if (ecs.family == ADDR_FAMILY_NUM_IP) {
+							inet_ntop(AF_INET, &ecs.subnet, ipname, INET6_ADDRSTRLEN);
+						}
+						else if (ecs.family == ADDR_FAMILY_NUM_IP) {
+							inet_ntop(AF_INET6, &ecs.subnet, ipname, INET6_ADDRSTRLEN);
+						}
+						else {
+							/*invalid ecs*/
+							ipname[0] = '\0';
+						}
 						logd("ECS %s/%d SCOPE %d\n",
-							inet_ntop(AF_INET, addr, ipname, INET6_ADDRSTRLEN),
+							ipname,
 							ecs.src_prefix_len,
 							ecs.scope_prefix_len);
 					}
@@ -1381,15 +1466,13 @@ static void ns_rdata_print_edns(ns_rr_t *rr)
 static void ns_rdata_print_a(ns_rr_t *rr)
 {
 	char ipname[INET6_ADDRSTRLEN];
-	struct in_addr *addr = (struct in_addr *)rr->rdata;
-	logd("IPv4: %s\n", inet_ntop(AF_INET, addr, ipname, INET6_ADDRSTRLEN));
+	logd("IPv4: %s\n", inet_ntop(AF_INET, rr->rdata, ipname, INET6_ADDRSTRLEN));
 }
 
 static void ns_rdata_print_aaaa(ns_rr_t *rr)
 {
-	struct in_addr6 *addr = (struct in_addr6 *)rr->rdata;
 	static char ipname[INET6_ADDRSTRLEN];
-	inet_ntop(AF_INET6, addr, ipname, INET6_ADDRSTRLEN);
+	inet_ntop(AF_INET6, rr->rdata, ipname, INET6_ADDRSTRLEN);
 	logd("IPv6: %s\n", ipname);
 }
 

@@ -116,7 +116,7 @@ typedef struct ns_ecs_t {
 	uint16_t family;
 	uint8_t src_prefix_len;
 	uint8_t scope_prefix_len;
-	struct in_addr subnet;
+	uint8_t subnet[16];
 } ns_ecs_t;
 
 typedef struct ns_opt_t {
