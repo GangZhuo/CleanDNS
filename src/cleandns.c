@@ -2495,7 +2495,7 @@ Options:\n\
   -l CHINA_IP           china ip address, e.g. 114.114.114.114/24.\n\
   -f FOREIGN_IP         foreign ip address, e.g. 8.8.8.8/24.\n\
   -c CHNROUTE_FILE      path to china route file, default: " DEFAULT_CHNROUTE_FILE ".\n\
-  -b BIND_ADDR          address that listens, default: " DEFAULT_LISTEN_ADDR ".\n\
+  -b BIND_ADDR          address that listens, e.g. 127.0.0.1:5354,[::1]:5354, default: " DEFAULT_LISTEN_ADDR ".\n\
   -p BIND_PORT          port that listens, default: " DEFAULT_LISTEN_PORT ".\n\
   -s DNS                DNS server to use, default: " DEFAULT_DNS_SERVER ".\n\
                         tcp://IP[:PORT] means forward request to upstream by TCP protocol,\n\
