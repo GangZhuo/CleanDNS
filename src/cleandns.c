@@ -274,7 +274,9 @@ static void print_args(cleandns_ctx* cleandns)
 {
 	int i;
 	for (i = 0; i < cleandns->listen_num; i++) {
-		logn("listen on %s\n", get_netaddrname(&cleandns->listens[i].addr));
+		logn("%s listen on %s\n",
+			cleandns->listens[i].addr.protocol == IPPROTO_TCP ? "TCP" : "UDP",
+			get_netaddrname(&cleandns->listens[i].addr));
 	}
 	logn("dns server: %s\n", cleandns->dns_server);
 	logn("chnroute: %s\n", cleandns->chnroute_file);
@@ -1646,6 +1648,10 @@ static int init_listens(cleandns_ctx *cleandns)
 
 	for (i = 0; i < num; i++) {
 		listen = cleandns->listens + i;
+		if (listen->addr.protocol == IPPROTO_TCP) {
+			loge("init_listens() error: listen on TCP port is not support\n");
+			return -1;
+		}
 		if (init_listen(cleandns, listen) != 0) {
 			loge("init_listens() error\n");
 			return -1;
