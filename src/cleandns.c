@@ -1528,7 +1528,7 @@ static int tcp_send(cleandns_ctx* cleandns, conn_t* conn)
 		logd("partly send %d bytes to '%s' (TCP)(sock=%d)\n",
 			nsend, get_addrname(to_addr), conn->sock);
 		/* partly sent, move memory, wait for the next time to send */
-		memmove(conn->sendbuf, conn->sendbuf + nsend, conn->sendbuf_size - nsend);
+		memmove(conn->sendbuf, conn->sendbuf + nsend, (size_t)conn->sendbuf_size - nsend);
 		conn->sendbuf_size -= nsend;
 		return 0;
 	}
@@ -1845,14 +1845,14 @@ static int resolve_netaddrs(
 		p && *p && i < max_num;
 		p = strtok(NULL, ",")) {
 
-		addr = (netaddr_t*)(((char *)addrs) + element_size * i);
+		addr = (netaddr_t*)(((char *)addrs) + (size_t)element_size * i);
 
 		url = strdup(p);
 
 		if (resolve_netaddr(url, addr, default_port)) {
 			free(url);
 			for (int j = 0; j < i; j++) {
-				addr = (netaddr_t*)(((char*)addrs) + element_size * j);
+				addr = (netaddr_t*)(((char*)addrs) + (size_t)element_size * j);
 				if (addr->addrinfo) {
 					freeaddrinfo(addr->addrinfo);
 					addr->addrinfo = NULL;
