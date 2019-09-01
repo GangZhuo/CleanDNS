@@ -1965,7 +1965,7 @@ static char *get_addrname(struct sockaddr *addr)
     else if (addr->sa_family == AF_INET6) {
 		struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)addr;
 		inet_ntop(AF_INET6, &addr_in6->sin6_addr, sip, sizeof(sip));
-        snprintf(addrname, sizeof(addrname), "%s:%d", sip,
+        snprintf(addrname, sizeof(addrname), "[%s]:%d", sip,
                 (int)(htons(addr_in6->sin6_port) & 0xFFFF));
 	}
     else {
