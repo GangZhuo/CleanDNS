@@ -35,6 +35,7 @@
 #define DEFAULT_CHNROUTE_FILE "chnroute.txt"
 #define DEFAULT_TIMEOUT "5"
 #define DEFAULT_PID_FILE "/var/run/cleandns.pid"
+#define LISTEN_BACKLOG	128
 
 #define FLG_NONE		0
 #define FLG_POLLUTE		1
@@ -101,16 +102,20 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv);
 static void print_args(cleandns_ctx* cleandns);
 static int parse_chnroute(cleandns_ctx *cleandns);
 static int test_ip_in_list(struct in_addr *ip, const net_list_t *netlist);
+static int resolve_listens(cleandns_ctx* cleandns);
 static int resolve_dns_server(cleandns_ctx *cleandns);
-static int init_sockets(cleandns_ctx *cleandns);
+static int init_listens(cleandns_ctx *cleandns);
+static int init_dnsservers(cleandns_ctx* cleandns);
 static int connect_server(cleandns_ctx* cleandns, conn_t* conn, dns_server_t* server);
 static int tcp_send(cleandns_ctx* cleandns, conn_t* conn);
 static int do_loop(cleandns_ctx *cleandns);
-static int handle_listen_sock(cleandns_ctx *cleandns);
-static int handle_remote_udprecv(cleandns_ctx *cleandns);
+static int handle_listen_sock(cleandns_ctx *cleandns, listen_t* listen);
+static int handle_remote_udprecv(cleandns_ctx *cleandns, dns_server_t* dnsserver);
 static int handle_remote_tcprecv(cleandns_ctx* cleandns, req_t* req, conn_t* conn, int conn_index);
 static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req);
 static char *get_addrname(struct sockaddr *addr);
+static char *get_netaddrname(netaddr_t* addr);
+static char* get_dnsservername(dns_server_t* dnsserver);
 static int parse_netmask(net_mask_t *netmask, char *line);
 static int resolve_proxy_server(cleandns_ctx* cleandns);
 static void run_as_daemonize(cleandns_ctx* cleandns);
@@ -164,6 +169,9 @@ int main(int argc, char **argv)
 		open_logfile();
 	}
 
+	if (resolve_listens(&cleandns) != 0)
+		return EXIT_FAILURE;
+
 	if (cleandns.china_ip) {
 		if (ns_ecs_parse_subnet((struct sockaddr *)(&cleandns.china_net.addr),
 			&cleandns.china_net.mask, cleandns.china_ip) != 0) {
@@ -198,7 +206,7 @@ int main(int argc, char **argv)
 		struct in_addr* dns_ip;
 		for (i = 0; i < cleandns.dns_server_num; i++) {
 			dns_server = cleandns.dns_servers + i;
-			dns_addr = (struct sockaddr_in*)dns_server->addr->ai_addr;
+			dns_addr = (struct sockaddr_in*)dns_server->addr.addrinfo->ai_addr;
 			dns_ip = (struct in_addr*)&dns_addr->sin_addr;
 			/* only foreign dns server need compression*/
 			if (!test_ip_in_list(dns_ip, &cleandns.chnroute_list)) {
@@ -210,7 +218,10 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (init_sockets(&cleandns) != 0)
+	if (init_listens(&cleandns) != 0)
+		return EXIT_FAILURE;
+
+	if (init_dnsservers(&cleandns) != 0)
 		return EXIT_FAILURE;
 
 	srand((unsigned int)time(NULL));
@@ -261,8 +272,10 @@ int main(int argc, char **argv)
 
 static void print_args(cleandns_ctx* cleandns)
 {
-
-	logn("listen on %s:%s\n", cleandns->listen_addr, cleandns->listen_port);
+	int i;
+	for (i = 0; i < cleandns->listen_num; i++) {
+		logn("listen on %s\n", get_netaddrname(&cleandns->listens[i].addr));
+	}
 	logn("dns server: %s\n", cleandns->dns_server);
 	logn("chnroute: %s\n", cleandns->chnroute_file);
 	logn("china ip: %s\n", cleandns->china_ip);
@@ -283,16 +296,13 @@ static void print_args(cleandns_ctx* cleandns)
 		logn("log_file: %s\n", cleandns->log_file);
 
 	if (loglevel >= LOG_INFO && cleandns->compression) {
-		int i;
 		dns_server_t* dns_server;
-		struct sockaddr_in* dns_addr;
 		logi("\n");
 		for (i = 0; i < cleandns->dns_server_num; i++) {
 			dns_server = cleandns->dns_servers + i;
-			dns_addr = (struct sockaddr_in*)dns_server->addr->ai_addr;
 			logi("compression %s on %s\n",
 				dns_server->is_foreign ? "enabled" : "disabled",
-				get_addrname((struct sockaddr*)dns_addr));
+				get_dnsservername(dns_server));
 		}
 		logi("\n");
 	}
@@ -340,12 +350,27 @@ static int do_loop(cleandns_ctx *cleandns)
 		FD_ZERO(&writeset);
 		FD_ZERO(&errorset);
 
-		max_fd = MAX(cleandns->listen_sock, cleandns->remote_sock);
+		max_fd = 0;
 
-		FD_SET(cleandns->listen_sock, &readset);
-		FD_SET(cleandns->listen_sock, &errorset);
-		FD_SET(cleandns->remote_sock, &readset);
-		FD_SET(cleandns->remote_sock, &errorset);
+		for (int i = 0; i < cleandns->listen_num; i++) {
+			listen_t* listen = cleandns->listens + i;
+
+			max_fd = MAX(max_fd, listen->sock);
+
+			FD_SET(listen->sock, &readset);
+			FD_SET(listen->sock, &errorset);
+		}
+
+		for (int i = 0; i < cleandns->dns_server_num; i++) {
+			dns_server_t* dnsserver = cleandns->dns_servers + i;
+
+			if (!dnsserver->udpsock) continue;
+
+			max_fd = MAX(max_fd, dnsserver->udpsock);
+
+			FD_SET(dnsserver->udpsock, &readset);
+			FD_SET(dnsserver->udpsock, &errorset);
+		}
 
 		item = req_list.nodes->items;
 		while (item) {
@@ -380,21 +405,32 @@ static int do_loop(cleandns_ctx *cleandns)
 			return -1;
 		}
 
-		if (FD_ISSET(cleandns->listen_sock, &errorset)) {
-			loge("do_loop(): listen_sock error\n");
-			return -1;
+		for (int i = 0; i < cleandns->listen_num; i++) {
+			listen_t* listen = cleandns->listens + i;
+
+			if (FD_ISSET(listen->sock, &errorset)) {
+				loge("do_loop(): listen_sock error\n");
+				return -1;
+			}
+
+			if (FD_ISSET(listen->sock, &readset))
+				handle_listen_sock(cleandns, listen);
 		}
 
-		if (FD_ISSET(cleandns->remote_sock, &errorset)) {
-			loge("do_loop(): remote_sock error\n");
-			return -1;
+		for (int i = 0; i < cleandns->dns_server_num; i++) {
+			dns_server_t* dnsserver = cleandns->dns_servers + i;
+
+			if (!dnsserver->udpsock) continue;
+
+			if (FD_ISSET(dnsserver->udpsock, &errorset)) {
+				loge("do_loop(): dnsserver.udpsock error\n");
+				return -1;
+			}
+
+			if (FD_ISSET(dnsserver->udpsock, &readset))
+				handle_remote_udprecv(cleandns, dnsserver);
 		}
 
-		if (FD_ISSET(cleandns->listen_sock, &readset))
-			handle_listen_sock(cleandns);
-
-		if (FD_ISSET(cleandns->remote_sock, &readset))
-			handle_remote_udprecv(cleandns);
 
 		item = req_list.nodes->items;
 		while (item) {
@@ -421,12 +457,13 @@ static int do_loop(cleandns_ctx *cleandns)
 							dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
 							conn->status = CONN_CONNECTED;
 							logd("connected to '%s' (TCP)(sock=%d)\n",
-								get_addrname(dns_server->addr->ai_addr), conn->sock);
+								get_dnsservername(dns_server),
+								conn->sock);
 						}
 						if (tcp_send(cleandns, conn) == -1) {
 							dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
 							loge("do_loop(): cannot send data to '%s' (TCP)\n",
-								get_addrname(dns_server->addr->ai_addr));
+								get_dnsservername(dns_server));
 							free_conn(conn);
 						}
 					}
@@ -626,7 +663,7 @@ static void print_response(cleandns_ctx* cleandns, ns_msg_t *msg, struct sockadd
 		rq.array,
 		from_addr ? get_addrname(from_addr) : "",
 		dns_server->is_foreign ? "foreign" : "china",
-		dns_server->tcp ? "(TCP)" : "",
+		dns_server->addr.protocol == IPPROTO_TCP ? "(TCP)" : "",
 		rs.array);
 	stream_free(&rq);
 	stream_free(&rs);
@@ -641,7 +678,7 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 	stream_t s = STREAM_INIT();
 	int len;
 	dns_server_t *dns_server = dns_server_index >= 0 ? &cleandns->dns_servers[dns_server_index] : NULL;
-	int is_tcp = dns_server && dns_server->tcp;
+	int is_tcp = dns_server && dns_server->addr.protocol == IPPROTO_TCP;
 
 	if (subnet) {
         ns_rr_t *rr;
@@ -727,20 +764,20 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 		memset(&s, 0, sizeof(stream_t));
 
 		if (connect_server(cleandns, conn, dns_server) != 0) {
-			loge("send_nsmsg: cannot connect to '%s'\n", get_addrname(dns_server->addr->ai_addr));
+			loge("send_nsmsg: cannot connect to '%s'\n", get_dnsservername(dns_server));
 			free_conn(conn);
 			return -1;
 		}
 		else if (conn->status == CONN_CONNECTED) {
 			if (tcp_send(cleandns, conn) == -1) {
-				loge("send_nsmsg: cannot send data to '%s' (TCP)\n", get_addrname(dns_server->addr->ai_addr));
+				loge("send_nsmsg: cannot send data to '%s' (TCP)\n", get_dnsservername(dns_server));
 				free_conn(conn);
 				return -1;
 			}
 		}
 		else {
 			logd("send_nsmsg: connecting '%s' ... (TCP)(sock=%d)\n",
-				get_addrname(dns_server->addr->ai_addr), conn->sock);
+				get_dnsservername(dns_server), conn->sock);
 		}
 	}
 	else {
@@ -769,8 +806,8 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 			dns_server = cleandns->dns_servers + i;
 			msg->id = (uint16_t)(req->id + i);
 			if (send_nsmsg(cleandns, msg, dns_server->is_foreign, NULL,
-				cleandns->remote_sock, dns_server->addr->ai_addr,
-				(socklen_t)dns_server->addr->ai_addrlen, req, i) != 0) {
+				dns_server->udpsock, dns_server->addr.addrinfo->ai_addr,
+				(socklen_t)dns_server->addr.addrinfo->ai_addrlen, req, i) != 0) {
 				loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
 			}
 			else {
@@ -785,8 +822,8 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 				dns_server = cleandns->dns_servers + i;
 				msg->id = (uint16_t)(req->id + i);
 				if (send_nsmsg(cleandns, msg, dns_server->is_foreign, &cleandns->china_net,
-					cleandns->remote_sock, dns_server->addr->ai_addr,
-					(socklen_t)dns_server->addr->ai_addrlen, req, i) != 0) {
+					dns_server->udpsock, dns_server->addr.addrinfo->ai_addr,
+					(socklen_t)dns_server->addr.addrinfo->ai_addrlen, req, i) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
 				}
 				else {
@@ -800,8 +837,8 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 				dns_server = cleandns->dns_servers + i;
 				msg->id = (uint16_t)(req->id + cleandns->dns_server_num + i);
 				if (send_nsmsg(cleandns, msg, dns_server->is_foreign, &cleandns->foreign_net,
-					cleandns->remote_sock, dns_server->addr->ai_addr,
-					(socklen_t)dns_server->addr->ai_addrlen, req, i) != 0) {
+					dns_server->udpsock, dns_server->addr.addrinfo->ai_addr,
+					(socklen_t)dns_server->addr.addrinfo->ai_addrlen, req, i) != 0) {
 					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'foreign_ip'.\n");
 				}
 				else {
@@ -860,7 +897,7 @@ static int handle_listen_sock_recv(cleandns_ctx *cleandns,
 	return rc;
 }
 
-static int handle_listen_sock(cleandns_ctx *cleandns)
+static int handle_listen_sock(cleandns_ctx *cleandns, listen_t *listen)
 {
 	int len;
     req_t *req;
@@ -871,6 +908,7 @@ static int handle_listen_sock(cleandns_ctx *cleandns)
         return -1;
     }
 
+	req->listen = listen;
 	req->expire = time(NULL) + cleandns->timeout;
 
     if (queue_add(cleandns, req) != 0) {
@@ -879,7 +917,7 @@ static int handle_listen_sock(cleandns_ctx *cleandns)
         return -1;
     }
 
-    len = recvfrom(cleandns->listen_sock, cleandns->buf, NS_PAYLOAD_SIZE, 0,
+    len = recvfrom(listen->sock, cleandns->buf, NS_PAYLOAD_SIZE, 0,
             (struct sockaddr *)(&req->addr), &req->addrlen);
     if (len > 0) {
 
@@ -977,7 +1015,6 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 {
 	ns_msg_t* best = NULL;
 	dns_server_t* dns_server;
-	struct sockaddr_in* dns_addr;
 
 	if (req->ns_msg_num == 0) {
 		loge("%s: resolve failed.\n", req->questions);
@@ -992,7 +1029,6 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 		for (i = 0; i < req->ns_msg_num; i++) {
 			msg = req->ns_msg + i;
 			dns_server = cleandns->dns_servers + dns_index(msg->id, cleandns->dns_server_num);
-			dns_addr = (struct sockaddr_in*)dns_server->addr->ai_addr;
 
 			flags = check_ns_msg(cleandns, msg);
 			if (flags & FLG_POLLUTE) {
@@ -1007,7 +1043,7 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 				haveip = (flags & (FLG_A | FLG_AAAA | FLG_A_CHN | FLG_AAAA_CHN));
 				if (haveip) {
 					int chnip, chnsubnet, chndns;
-					struct in_addr* addr = &dns_addr->sin_addr;
+					struct in_addr* addr = &((struct sockaddr_in*)dns_server->addr.addrinfo->ai_addr)->sin_addr;
 
 					chnip = (flags & (FLG_A_CHN | FLG_AAAA_CHN)); /* have chinese ip(s) in result */
 					chnsubnet = !is_foreign(msg->id, cleandns->dns_server_num); /* edns-client-subnet with chinese ip */
@@ -1051,9 +1087,8 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 		best = req->ns_msg + best_index;
 		if (loglevel >= LOG_INFO) {
 			dns_server = cleandns->dns_servers + dns_index(best->id, cleandns->dns_server_num);
-			dns_addr = (struct sockaddr_in*)dns_server->addr->ai_addr;
 			logi("best answers come from '%s'\n",
-				get_addrname((struct sockaddr*)dns_addr));
+				get_dnsservername(dns_server));
 		}
 	}
 
@@ -1075,9 +1110,8 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 			}
 
 			dns_server = cleandns->dns_servers + dns_index(best->id, cleandns->dns_server_num);
-			dns_addr = (struct sockaddr_in*) dns_server->addr->ai_addr;
 
-			dns_name = get_addrname((struct sockaddr*)dns_addr);
+			dns_name = get_dnsservername(dns_server);
 
 			rr->cls = NS_PAYLOAD_SIZE; /* reset edns payload size */
 
@@ -1090,7 +1124,7 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 
 		best->id = req->old_id;
 
-		if (send_nsmsg(cleandns, best, 0, NULL, cleandns->listen_sock,
+		if (send_nsmsg(cleandns, best, 0, NULL, req->listen->sock,
 			(struct sockaddr*)(&req->addr), req->addrlen, req, -1) != 0) {
 			loge("response_best_nsmsg: failed to send answers to '%s'\n",
 				get_addrname((struct sockaddr*)(&req->addr)));
@@ -1193,7 +1227,7 @@ static int handle_remote_sock_recv(cleandns_ctx *cleandns, char *buf, int len, s
     
 }
 
-static int handle_remote_udprecv(cleandns_ctx *cleandns)
+static int handle_remote_udprecv(cleandns_ctx *cleandns, dns_server_t *dnsserver)
 {
 	struct sockaddr_storage from_addr;
 	socklen_t from_addrlen = sizeof(struct sockaddr_storage);
@@ -1203,7 +1237,7 @@ static int handle_remote_udprecv(cleandns_ctx *cleandns)
 
 	memset(&from_addr, 0, sizeof(struct sockaddr_storage));
 
-	len = recvfrom(cleandns->remote_sock, buf, bufsize, 0,
+	len = recvfrom(dnsserver->udpsock, buf, bufsize, 0,
             (struct sockaddr *)&from_addr, &from_addrlen);
 
 	if (len > 0) {
@@ -1243,7 +1277,7 @@ static int handle_remote_udprecv(cleandns_ctx *cleandns)
 static int handle_remote_tcprecv(cleandns_ctx* cleandns, req_t *req, conn_t *conn, int conn_index)
 {
 	dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
-	struct sockaddr* dns_addr = dns_server->addr->ai_addr;
+	struct sockaddr* dns_addr = dns_server->addr.addrinfo->ai_addr;
 	int nread;
 
 	if (!conn->recvbuf) {
@@ -1352,7 +1386,7 @@ static int handle_remote_tcprecv(cleandns_ctx* cleandns, req_t *req, conn_t *con
 				logd("response data (TCP):\n");
 				bprint(conn->recvbuf + 2, msglen);
 
-				if (handle_remote_sock_recv(cleandns, conn->recvbuf + 2, msglen, dns_server->addr->ai_addr) != 0) {
+				if (handle_remote_sock_recv(cleandns, conn->recvbuf + 2, msglen, dns_server->addr.addrinfo->ai_addr) != 0) {
 					loge("tcp_recv(): handle_remote_sock_recv() error\n");
 					return -1;
 				}
@@ -1439,7 +1473,7 @@ static int setnonblock(sock_t sock)
 static int tcp_send(cleandns_ctx* cleandns, conn_t* conn)
 {
 	dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
-	struct sockaddr* to_addr = dns_server->addr->ai_addr;
+	struct sockaddr* to_addr = dns_server->addr.addrinfo->ai_addr;
 	int nsend;
 
 	if (conn->by_proxy && conn->status != CONN_PROXY_CONNECTED) {
@@ -1513,9 +1547,9 @@ static int connect_server(cleandns_ctx* cleandns, conn_t *conn, dns_server_t *se
 	sock_t sock;
 	int rv;
 
-	sock = socket(server->addr->ai_family, SOCK_STREAM, IPPROTO_TCP);
+	sock = socket(server->addr.addrinfo->ai_family, SOCK_STREAM, IPPROTO_TCP);
 	if (sock == -1) {
-		loge("connect_server(): Can't create socket to '%s'\n", get_addrname(server->addr->ai_addr));
+		loge("connect_server(): Can't create socket to '%s'\n", get_dnsservername(server));
 		return -1;
 	}
 
@@ -1530,7 +1564,7 @@ static int connect_server(cleandns_ctx* cleandns, conn_t *conn, dns_server_t *se
 		conn->by_proxy = 1;
 	}
 	else {
-		rv = connect(sock, server->addr->ai_addr, (int)server->addr->ai_addrlen);
+		rv = connect(sock, server->addr.addrinfo->ai_addr, (int)server->addr.addrinfo->ai_addrlen);
 	}
 
 	if (rv != 0) {
@@ -1540,7 +1574,7 @@ static int connect_server(cleandns_ctx* cleandns, conn_t *conn, dns_server_t *se
 			return 0;
 		}
 		loge("connect_server(): connect to '%s' error. %d %s\n",
-			get_addrname(server->addr->ai_addr), err, strerror(err));
+			get_dnsservername(server), err, strerror(err));
 		close(sock);
 		return -1;
 	}
@@ -1549,48 +1583,120 @@ static int connect_server(cleandns_ctx* cleandns, conn_t *conn, dns_server_t *se
 	conn->sock = sock;
 
 	logd("connected to '%s' (TCP)(sock=%d)\n",
-		get_addrname(server->addr->ai_addr), conn->sock);
+		get_dnsservername(server), conn->sock);
 
 	return 0;
 }
 
-static int init_sockets(cleandns_ctx *cleandns)
+static int init_listen(cleandns_ctx* cleandns, listen_t *ctx)
 {
-	struct addrinfo hints;
-	struct addrinfo *addr_ip;
-	int r;
+	struct addrinfo* addrinfo;
+	int is_tcp;
+	sock_t sock;
 
-	cleandns->listen_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (setnonblock(cleandns->listen_sock) != 0)
-		return -1;
-#ifdef WINDOWS
-	disable_udp_connreset(cleandns->listen_sock);
-#endif
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_DGRAM;
-	if ((r = getaddrinfo(cleandns->listen_addr, cleandns->listen_port, &hints, &addr_ip)) != 0) {
-		loge("%s:%s:%s\n", gai_strerror(r), cleandns->listen_addr, cleandns->listen_port);
+	addrinfo = ctx->addr.addrinfo;
+	is_tcp = ctx->addr.protocol == IPPROTO_TCP;
+
+	sock = socket(
+		addrinfo->ai_family,
+		is_tcp ? SOCK_STREAM : SOCK_DGRAM,
+		is_tcp ? IPPROTO_TCP : IPPROTO_UDP);
+
+	if (!sock) {
+		loge("init_listen(): create socket failed\n");
 		return -1;
 	}
-	if (bind(cleandns->listen_sock, addr_ip->ai_addr, (int)addr_ip->ai_addrlen) != 0) {
-		loge("Can't bind address %s:%s\n", cleandns->listen_addr, cleandns->listen_port);
+
+	if (setnonblock(sock) != 0) {
+		loge("init_listen(): set sock non-block failed\n");
+		close(sock);
 		return -1;
 	}
-	freeaddrinfo(addr_ip);
 
-	cleandns->remote_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (setnonblock(cleandns->remote_sock) != 0)
-		return -1;
 #ifdef WINDOWS
-	disable_udp_connreset(cleandns->remote_sock);
+	if (!is_tcp) {
+		disable_udp_connreset(sock);
+	}
 #endif
+
+	if (bind(sock, addrinfo->ai_addr, (int)addrinfo->ai_addrlen) != 0) {
+		loge("Can't bind address %s\n", get_addrname(addrinfo->ai_addr));
+		close(sock);
+		return -1;
+	}
+
+	if (is_tcp) {
+
+		if (listen(sock, LISTEN_BACKLOG) != 0) {
+			loge("Can't listen on %s\n", get_addrname(addrinfo->ai_addr));
+			close(sock);
+			return -1;
+		}
+	}
+
+	ctx->sock = sock;
+
 	return 0;
 }
 
-static void parse_url(char *s, char **protocol, char **host, char **port)
+static int init_listens(cleandns_ctx *cleandns)
+{
+	int i, num = cleandns->listen_num;
+	listen_t *listen;
+
+	for (i = 0; i < num; i++) {
+		listen = cleandns->listens + i;
+		if (init_listen(cleandns, listen) != 0) {
+			loge("init_listens() error\n");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static int init_dnsservers(cleandns_ctx* cleandns)
+{
+	int i, num = cleandns->dns_server_num;
+	dns_server_t* dnsserver;
+	struct addrinfo* addrinfo;
+	int is_tcp;
+	sock_t sock;
+
+	for (i = 0; i < num; i++) {
+		dnsserver = cleandns->dns_servers + i;
+		is_tcp = dnsserver->addr.protocol == IPPROTO_TCP;
+		if (is_tcp) continue;
+		addrinfo = dnsserver->addr.addrinfo;
+		sock = socket(
+			addrinfo->ai_family,
+			SOCK_DGRAM,
+			IPPROTO_UDP);
+
+		if (!sock) {
+			loge("init_dnsservers(): create socket failed\n");
+			return -1;
+		}
+
+		if (setnonblock(sock) != 0) {
+			loge("init_dnsservers(): set sock non-block failed\n");
+			close(sock);
+			return -1;
+		}
+
+#ifdef WINDOWS
+		disable_udp_connreset(sock);
+#endif
+		dnsserver->udpsock = sock;
+	}
+
+	return 0;
+}
+
+static int parse_url(char *s, char **protocol, char **host, char **port)
 {
 	char *p;
+	int cnt = 0;
 
 	p = strstr(s, "://");
 	if (p) {
@@ -1600,6 +1706,24 @@ static void parse_url(char *s, char **protocol, char **host, char **port)
 	}
 	else {
 		*protocol = NULL;
+	}
+
+	/* ipv6 */
+	if (*s == '[') {
+		p = strrchr(s, ']');
+		if (p) {
+			*host = s;
+			p++;
+			if (*p == ':')
+				*port = p + 1;
+			else
+				*port = NULL;
+			*p = '\0';
+			return 0;
+		}
+		else {
+			return -1;
+		}
 	}
 
 	p = strrchr(s, ':');
@@ -1612,6 +1736,61 @@ static void parse_url(char *s, char **protocol, char **host, char **port)
 	}
 
 	*host = s;
+
+	return 0;
+}
+
+static int is_ipv6(const char* ip)
+{
+	return strchr(ip, ':');
+}
+
+static int resolve_netaddr(
+	char *s, netaddr_t *addr,
+	const char* default_port)
+{
+	char* protocol, * ip, * port;
+	struct addrinfo hints;
+	int r;
+
+	memset(addr, 0, sizeof(netaddr_t));
+
+	parse_url(s, &protocol, &ip, &port);
+
+	if (protocol) {
+		if (strcmp(protocol, "tcp") == 0)
+			addr->protocol = IPPROTO_TCP;
+		else if (strcmp(protocol, "udp") == 0)
+			addr->protocol = IPPROTO_UDP;
+		else {
+			loge("resolve_netaddr(): unknown protocol \"%s\"\n", protocol);
+			return -1;
+		}
+	}
+	else {
+		addr->protocol = IPPROTO_UDP;
+	}
+
+	if (!port || strlen(port) == 0)
+		port = (char*)default_port;
+
+	if (!port || strlen(port) == 0)
+		port = "53";
+
+	memset(&hints, 0, sizeof(hints));
+
+	hints.ai_family = is_ipv6(ip) ? AF_INET6 : AF_INET;
+	hints.ai_socktype =
+		(addr->protocol == IPPROTO_TCP) ?
+		SOCK_STREAM :
+		SOCK_DGRAM;
+
+	if ((r = getaddrinfo(ip, port, &hints, &addr->addrinfo)) != 0) {
+		loge("%s: %s:%s\n", gai_strerror(r), ip, port);
+		return -1;
+	}
+
+	return 0;
 }
 
 static int resolve_proxy_server(cleandns_ctx* cleandns)
@@ -1635,7 +1814,7 @@ static int resolve_proxy_server(cleandns_ctx* cleandns)
 		port = "1080";
 
 	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
+	hints.ai_family = is_ipv6(ip) ? AF_INET6 : AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 
 	if ((r = getaddrinfo(ip, port, &hints, &proxy_server->addr)) != 0) {
@@ -1649,52 +1828,85 @@ static int resolve_proxy_server(cleandns_ctx* cleandns)
 	return 0;
 }
 
-static int resolve_dns_server(cleandns_ctx *cleandns)
+static int resolve_netaddrs(
+	const char *str,
+	netaddr_t *addrs,
+	int max_num,
+	int element_size,
+	const char *default_port)
 {
-	struct addrinfo hints;
-	char *s, *protocol, *ip, *port, *p;
-	int r;
-	dns_server_t* dns_server;
+	char *s, *p, *url;
+	int i;
+	netaddr_t *addr;
 
-	s = strdup(cleandns->dns_server);
+	s = strdup(str);
 
-	for (p = strtok(s, ",");
-		p && *p && cleandns->dns_server_num < MAX_DNS_SERVER;
+	for (i = 0, p = strtok(s, ",");
+		p && *p && i < max_num;
 		p = strtok(NULL, ",")) {
 
-		dns_server = cleandns->dns_servers + cleandns->dns_server_num;
+		addr = (netaddr_t*)(((char *)addrs) + element_size * i);
 
-		parse_url(p, &protocol, &ip, &port);
+		url = strdup(p);
 
-
-		if (protocol && strcmp(protocol, "tcp") == 0) {
-			dns_server->tcp = 1;
-		}
-		else if (!protocol || strcmp(protocol, "udp") == 0) {
-			dns_server->tcp = 0;
-		}
-		else {
-			loge("invalid protocol: %s://%s:%s\n", protocol, ip, port);
-			free(s);
+		if (resolve_netaddr(url, addr, default_port)) {
+			free(url);
+			for (int j = 0; j < i; j++) {
+				addr = (netaddr_t*)(((char*)addrs) + element_size * j);
+				if (addr->addrinfo) {
+					freeaddrinfo(addr->addrinfo);
+					addr->addrinfo = NULL;
+				}
+			}
+			loge("resolve_netaddrs(): resolve \"%s\" failed\n", p);
 			return -1;
 		}
 
-		if (!port || strlen(port) == 0)
-			port = "53";
+		free(url);
 
-		memset(&hints, 0, sizeof(hints));
-		hints.ai_family = AF_INET;
-		hints.ai_socktype = dns_server->tcp ? SOCK_STREAM : SOCK_DGRAM;
-
-		if ((r = getaddrinfo(ip, port, &hints, &dns_server->addr)) != 0) {
-			loge("%s: %s:%s\n", gai_strerror(r), ip, port);
-			free(s);
-			return -1;
-		}
-		cleandns->dns_server_num++;
+		i++;
 	}
 
 	free(s);
+
+	return i;
+}
+
+static int resolve_listens(cleandns_ctx* cleandns)
+{
+	cleandns->listen_num = resolve_netaddrs(
+		cleandns->listen_addr,
+		&cleandns->listens[0].addr,
+		MAX_LISTEN,
+		sizeof(listen_t),
+		cleandns->listen_port);
+
+	if (cleandns->listen_num == -1) {
+		loge("resolve_listens(): resolve \"%s\" failed\n", cleandns->listen_addr);
+		return -1;
+	}
+
+	if (cleandns->listen_num == 0) {
+		loge("no listen\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int resolve_dns_server(cleandns_ctx *cleandns)
+{
+	cleandns->dns_server_num = resolve_netaddrs(
+		cleandns->dns_server,
+		&cleandns->dns_servers[0].addr,
+		MAX_DNS_SERVER,
+		sizeof(dns_server_t),
+		"53");
+
+	if (cleandns->dns_server_num == -1) {
+		loge("resolve_dns_server(): resolve \"%s\" failed\n", cleandns->dns_server);
+		return -1;
+	}
 
 	if (cleandns->dns_server_num == 0) {
 		loge("no dns server\n");
@@ -1760,6 +1972,16 @@ static char *get_addrname(struct sockaddr *addr)
         addrname[0] = '\0';
     }
     return addrname;
+}
+
+static char *get_netaddrname(netaddr_t *addr)
+{
+	return get_addrname(addr->addrinfo->ai_addr);
+}
+
+static char* get_dnsservername(dns_server_t* dnsserver)
+{
+	return get_netaddrname(&dnsserver->addr);
 }
 
 static int parse_netmask(net_mask_t *netmask, char *line)
@@ -2213,10 +2435,15 @@ static void free_cleandns(cleandns_ctx *cleandns)
 	if (cleandns == NULL)
 		return;
 
-	if (cleandns->listen_sock)
-		close(cleandns->listen_sock);
-	if (cleandns->remote_sock)
-		close(cleandns->remote_sock);
+	for (i = 0; i < cleandns->listen_num; i++) {
+		listen_t* listen = cleandns->listens + i;
+		if (listen->sock)
+			close(listen->sock);
+		if (listen->addr.addrinfo) {
+			freeaddrinfo(listen->addr.addrinfo);
+			listen->addr.addrinfo = NULL;
+		}
+	}
 
 	free(cleandns->listen_addr);
 	free(cleandns->listen_port);
@@ -2229,10 +2456,12 @@ static void free_cleandns(cleandns_ctx *cleandns)
 	free(cleandns->proxy);
 
 	for (i = 0; i < cleandns->dns_server_num; i++) {
-		dns_server_t* dns_server = cleandns->dns_servers + i;
-		if (cleandns->proxy_server.addr) {
-			freeaddrinfo(dns_server->addr);
-			dns_server->addr = NULL;
+		dns_server_t* dnsserver = cleandns->dns_servers + i;
+		if (dnsserver->udpsock)
+			close(dnsserver->udpsock);
+		if (dnsserver->addr.addrinfo) {
+			freeaddrinfo(dnsserver->addr.addrinfo);
+			dnsserver->addr.addrinfo = NULL;
 		}
 	}
 

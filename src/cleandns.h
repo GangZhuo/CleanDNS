@@ -16,6 +16,8 @@ typedef int sock_t;
 #define MAX_NS_MSG (MAX_DNS_SERVER * 2)
 #define PROXY_HEAD_LEN	16
 
+#define MAX_LISTEN 8
+
 #define CONN_CONNECTING			0
 #define CONN_CONNECTED			1
 #define CONN_PROXY_HANKSHAKE_1	2
@@ -30,6 +32,16 @@ typedef int sock_t;
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct netaddr_t {
+	int protocol; /* IPPROTO_UDP or IPPROTO_TCP */
+	struct addrinfo* addrinfo;
+} netaddr_t;
+
+typedef struct listen_t {
+	netaddr_t addr;
+	sock_t sock;
+} listen_t;
 
 typedef struct proxy_state_t {
 	char *sendbuf;
@@ -61,6 +73,7 @@ typedef struct req_t {
 	int wait_num;
 	conn_t conns[MAX_NS_MSG];
 	int conn_num;
+	listen_t *listen;
 } req_t;
 
 typedef struct subnet_t {
@@ -80,9 +93,9 @@ typedef struct net_list_t {
 } net_list_t;
 
 typedef struct dns_server_t {
-	struct addrinfo* addr;
+	netaddr_t addr;
 	int is_foreign;
-	int tcp;
+	sock_t udpsock;
 } dns_server_t;
 
 typedef struct proxy_server_t {
@@ -108,8 +121,8 @@ typedef struct cleandns_ctx {
 	int dns_server_num;
 	subnet_t china_net;
 	subnet_t foreign_net;
-	sock_t listen_sock;
-	sock_t remote_sock;
+	listen_t listens[MAX_LISTEN];
+	int listen_num;
 	char buf[NS_PAYLOAD_SIZE + PROXY_HEAD_LEN];
 	rbtree_t queue;
 	proxy_server_t proxy_server;
