@@ -101,7 +101,9 @@ static void queue_remove_bynode(cleandns_ctx* cleandns, rbnode_t* n);
 static int parse_args(cleandns_ctx *cleandns, int argc, char **argv);
 static void print_args(cleandns_ctx* cleandns);
 static int parse_chnroute(cleandns_ctx *cleandns);
-static int test_ip_in_list(struct in_addr *ip, const net_list_t *netlist);
+static int test_ip_in_list4(struct in_addr *ip, const net_list_t *netlist);
+static int test_ip_in_list6(struct in_addr6* ip, const net_list_t* netlist);
+static int test_addr_in_list(struct sockaddr* addr, const net_list_t* netlist);
 static int resolve_listens(cleandns_ctx* cleandns);
 static int resolve_dns_server(cleandns_ctx *cleandns);
 static int init_listens(cleandns_ctx *cleandns);
@@ -202,14 +204,12 @@ int main(int argc, char **argv)
 	if (cleandns.compression) {
 		int i;
 		dns_server_t* dns_server;
-		struct sockaddr_in* dns_addr;
-		struct in_addr* dns_ip;
 		for (i = 0; i < cleandns.dns_server_num; i++) {
 			dns_server = cleandns.dns_servers + i;
-			dns_addr = (struct sockaddr_in*)dns_server->addr.addrinfo->ai_addr;
-			dns_ip = (struct in_addr*)&dns_addr->sin_addr;
 			/* only foreign dns server need compression*/
-			if (!test_ip_in_list(dns_ip, &cleandns.chnroute_list)) {
+			if (!test_addr_in_list(
+				dns_server->addr.addrinfo->ai_addr,
+				&cleandns.chnroute_list)) {
 				dns_server->is_foreign = 1;
 			}
 			else {
@@ -947,7 +947,7 @@ static int check_rr(cleandns_ctx *cleandns, ns_rr_t *rr)
 {
 	if (rr->type == NS_QTYPE_A) {
 		struct in_addr *addr = (struct in_addr *)rr->rdata;
-		if (test_ip_in_list(addr, &cleandns->chnroute_list)) {
+		if (test_ip_in_list4(addr, &cleandns->chnroute_list)) {
 			return FLG_A_CHN;
 		}
 		else {
@@ -956,7 +956,12 @@ static int check_rr(cleandns_ctx *cleandns, ns_rr_t *rr)
 	}
 	else if (rr->type == NS_QTYPE_AAAA) {
 		struct in_addr6 *addr = (struct in_addr6 *)rr->rdata;
-		return FLG_AAAA;
+		if (test_ip_in_list6(addr, &cleandns->chnroute_list)) {
+			return FLG_AAAA_CHN;
+		}
+		else {
+			return FLG_AAAA;
+		}
 	}
 	else if (rr->type == NS_QTYPE_PTR) {
 		return FLG_PTR;
@@ -1045,11 +1050,10 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 				haveip = (flags & (FLG_A | FLG_AAAA | FLG_A_CHN | FLG_AAAA_CHN));
 				if (haveip) {
 					int chnip, chnsubnet, chndns;
-					struct in_addr* addr = &((struct sockaddr_in*)dns_server->addr.addrinfo->ai_addr)->sin_addr;
 
 					chnip = (flags & (FLG_A_CHN | FLG_AAAA_CHN)); /* have chinese ip(s) in result */
 					chnsubnet = !is_foreign(msg->id, cleandns->dns_server_num); /* edns-client-subnet with chinese ip */
-					chndns = test_ip_in_list(addr, &cleandns->chnroute_list); /* from china dns server */
+					chndns = test_addr_in_list(dns_server->addr.addrinfo->ai_addr, &cleandns->chnroute_list); /* from china dns server */
 
 					score[i] += 1;
 
@@ -1748,7 +1752,7 @@ static int parse_url(char *s, char **protocol, char **host, char **port)
 
 static int is_ipv6(const char* ip)
 {
-	return strchr(ip, ':');
+	return !!strchr(ip, ':');
 }
 
 static int resolve_netaddr(
@@ -1927,7 +1931,7 @@ static int cmp_net_mask(const void *a, const void *b)
 	return ((net_mask_t *)a)->net - ((net_mask_t *)b)->net;
 }
 
-static int test_ip_in_list(struct in_addr *ip, const net_list_t *netlist)
+static int test_ip_in_list4(struct in_addr *ip, const net_list_t *netlist)
 {
 	int l = 0, r = netlist->entries - 1;
 	int m, cmp;
@@ -1956,6 +1960,25 @@ static int test_ip_in_list(struct in_addr *ip, const net_list_t *netlist)
         return 0;
     }
     return 1;
+}
+
+static int test_ip_in_list6(struct in_addr6* ip, const net_list_t* netlist)
+{
+	/*TODO:*/
+	return 0;
+}
+
+static int test_addr_in_list(struct sockaddr* addr, const net_list_t* netlist)
+{
+	if (addr->sa_family == AF_INET) {
+		return test_ip_in_list4(&((struct sockaddr_in*)addr)->sin_addr, netlist);
+	}
+	else if (addr->sa_family == AF_INET6) {
+		return test_ip_in_list6(&((struct sockaddr_in6*)addr)->sin6_addr, netlist);
+	}
+	else {
+		return 0;
+	}
 }
 
 static char *get_addrname(struct sockaddr *addr)
