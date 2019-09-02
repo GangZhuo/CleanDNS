@@ -25,6 +25,7 @@
 #include "cleandns.h"
 #include "ns_msg.h"
 #include "stream.h"
+#include "dllist.h"
 
 #define CLEANDNS_NAME    "CleanDNS"
 #define CLEANDNS_VERSION "0.4.1"
@@ -2035,58 +2036,200 @@ static int parse_netmask(net_mask_t *netmask, char *line)
     return 0;
 }
 
-static int parse_chnroute(cleandns_ctx *cleandns)
+static int parse_netmask6(net_mask6_t *netmask, char *line)
 {
-	char buf[32];
-	int buf_size;
-	char *line;
-	net_list_t *list;
-	FILE *fp;
+	char* sp_pos;
+	struct in_addr6 ip;
 	int i;
-
-	buf_size = sizeof(buf);
-	list = &cleandns->chnroute_list;
-	list->entries = 0;
-	i = 0;
-
-	fp = fopen(cleandns->chnroute_file, "rb");
-	if (fp == NULL) {
-		loge("Can't open chnroute: %s\n", cleandns->chnroute_file);
+	sp_pos = strchr(line, '/');
+	if (sp_pos) {
+		*sp_pos = 0;
+		netmask->cidr = atoi(sp_pos + 1);
+	}
+	else {
+		netmask->cidr = 128;
+	}
+	if (inet_pton(AF_INET6, line, &ip) == 0) {
+		if (sp_pos) *sp_pos = '/';
+		loge("invalid addr %s\n", line);
 		return -1;
 	}
-
-	while ((line = fgets(buf, buf_size, fp)) != NULL) {
-		list->entries++;
+	memcpy(netmask->net, ip.s6_addr, 16);
+	for (i = 0; i < 4; i++) {
+		netmask->net[i] = ntohl(netmask->net[i]);
 	}
+	if (sp_pos)* sp_pos = '/';
+	return 0;
+}
 
-	list->nets = calloc(list->entries, sizeof(net_mask_t));
-	if (list->nets == NULL) {
-		loge("calloc\n");
+typedef struct chnroute_item_t {
+	dlitem_t entry;
+	int is_ipv6;
+	union {
+		net_mask_t net;
+		net_mask6_t net6;
+	};
+} chnroute_item_t;
+
+typedef struct chnroute_list_t {
+	dllist_t items;
+	int net_num;
+	int net6_num;
+} chnroute_list_t;
+
+static void free_chnroute_list(dllist_t *list)
+{
+	dlitem_t *curr,*next;
+	chnroute_item_t *item;
+
+	dllist_foreach(list, curr, next, chnroute_item_t, item, entry) {
+		free(item);
+	}
+}
+
+static int parse_chnroute_file(chnroute_list_t *list, const char *filename)
+{
+	char buf[512];
+	char *line;
+	FILE *fp;
+	int r, rownum = 0;
+	chnroute_item_t *item;
+
+	fp = fopen(filename, "rb");
+	if (fp == NULL) {
+		loge("Can't open chnroute: %s\n", filename);
 		return -1;
 	}
 
 	if (fseek(fp, 0, SEEK_SET) != 0) {
 		loge("fseek\n");
+		fclose(fp);
 		return -1;
 	}
 
-	while ((line = fgets(buf, buf_size, fp)) != NULL) {
+	while ((line = fgets(buf, sizeof(buf), fp)) != NULL) {
 		char *sp_pos;
+
+		rownum++;
+
+		if ((*line) == '#') continue;
+
 		sp_pos = strchr(line, '\r');
 		if (sp_pos) *sp_pos = 0;
+
 		sp_pos = strchr(line, '\n');
 		if (sp_pos) *sp_pos = 0;
-        if (parse_netmask(list->nets + i, line) != 0) {
-            loge("invalid addr %s in %s:%d\n", line, cleandns->chnroute_file, i + 1);
-            return -1;
+
+		if (!(*line)) continue;
+
+		item = (chnroute_item_t*)malloc(sizeof(chnroute_item_t));
+		if (!item) {
+			loge("calloc\n");
+			fclose(fp);
+			return -1;
+		}
+
+		memset(item, 0, sizeof(chnroute_item_t));
+
+		if (is_ipv6(line)) {
+			r = parse_netmask6(&item->net6, line);
+			item->is_ipv6 = 1;
+		}
+		else {
+			r = parse_netmask(&item->net, line);
+		}
+
+		if (r != 0) {
+            loge("invalid addr %s in %s:%d\n", line, filename, rownum);
+			free(item);
+			fclose(fp);
+			return -1;
         }
-        i++;
+		else {
+			dllist_add(&list->items, &item->entry);
+			if (item->is_ipv6)
+				list->net6_num++;
+			else
+				list->net_num++;
+		}
     }
 
-	qsort(list->nets, list->entries, sizeof(net_mask_t), cmp_net_mask);
-
 	fclose(fp);
+
 	return 0;
+}
+
+static int feedback_net_list(cleandns_ctx *cleandns, chnroute_list_t *list)
+{
+	net_list_t *netlist;
+
+	netlist = &cleandns->chnroute_list;
+	netlist->entries = 0;
+	netlist->entries6 = 0;
+
+	netlist->nets = calloc(list->net_num, sizeof(net_mask_t));
+	if (netlist->nets == NULL) {
+		loge("calloc\n");
+		return -1;
+	}
+
+	netlist->nets6 = calloc(list->net6_num, sizeof(net_mask6_t));
+	if (netlist->nets6 == NULL) {
+		loge("calloc\n");
+		free(netlist->nets);
+		return -1;
+	}
+
+	{
+		dlitem_t* curr, * next;
+		chnroute_item_t* item;
+
+		dllist_foreach(&list->items, curr, next, chnroute_item_t, item, entry) {
+			if (item->is_ipv6) {
+				netlist->nets6[netlist->entries6++] = item->net6;
+			}
+			else {
+				netlist->nets[netlist->entries++] = item->net;
+			}
+		}
+	}
+
+	qsort(netlist->nets, netlist->entries, sizeof(net_mask_t), cmp_net_mask);
+
+	/*TODO: sort net6*/
+
+	return 0;
+}
+
+static int parse_chnroute(cleandns_ctx* cleandns)
+{
+	char *s, *p;
+	int i,r;
+	chnroute_list_t list;
+
+	memset(&list, 0, sizeof(chnroute_list_t));
+
+	dllist_init(&list.items);
+
+	s = strdup(cleandns->chnroute_file);
+
+	for (i = 0, p = strtok(s, ",");
+		p && *p;
+		p = strtok(NULL, ",")) {
+
+		if (parse_chnroute_file(&list, p)) {
+			free_chnroute_list(&list.items);
+			return -1;
+		}
+	}
+
+	free(s);
+
+	r = feedback_net_list(cleandns, &list);
+
+	free_chnroute_list(&list.items);
+
+	return r;
 }
 
 /*left trim*/

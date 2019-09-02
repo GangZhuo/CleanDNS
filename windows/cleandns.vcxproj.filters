@@ -59,5 +59,8 @@
     <ClInclude Include="..\src\stream.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\dllist.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

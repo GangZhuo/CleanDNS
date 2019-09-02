@@ -157,6 +157,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\cleandns.h" />
+    <ClInclude Include="..\src\dllist.h" />
     <ClInclude Include="..\src\log.h" />
     <ClInclude Include="..\src\ns_msg.h" />
     <ClInclude Include="..\src\rbtree.h" />

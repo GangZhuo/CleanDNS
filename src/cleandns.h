@@ -87,9 +87,16 @@ typedef struct net_mask_t {
 	uint32_t mask;
 } net_mask_t;
 
+typedef struct net_mask6_t {
+	uint32_t net[4];
+	int cidr;
+} net_mask6_t;
+
 typedef struct net_list_t {
 	int entries;
 	net_mask_t *nets;
+	int entries6;
+	net_mask6_t *nets6;
 } net_list_t;
 
 typedef struct dns_server_t {
