@@ -126,6 +126,8 @@ static void open_syslog();
 static void close_syslog();
 static void open_logfile();
 static void close_logfile();
+static int parse_china_ip(cleandns_ctx* cleandns);
+static int parse_foreign_ip(cleandns_ctx* cleandns);
 
 #ifdef WINDOWS
 BOOL WINAPI sig_handler(DWORD signo)
@@ -176,21 +178,13 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 
 	if (cleandns.china_ip) {
-		if (ns_ecs_parse_subnet((struct sockaddr *)(&cleandns.china_net.addr),
-			&cleandns.china_net.mask, cleandns.china_ip) != 0) {
-			loge("Invalid addr %s\n", cleandns.china_ip);
+		if (parse_china_ip(&cleandns))
 			return EXIT_FAILURE;
-		}
-		cleandns.china_net.name = cleandns.china_ip;
 	}
 
 	if (cleandns.foreign_ip) {
-		if (ns_ecs_parse_subnet((struct sockaddr *)(&cleandns.foreign_net.addr),
-			&cleandns.foreign_net.mask, cleandns.foreign_ip) != 0) {
-			loge("Invalid addr %s\n", cleandns.foreign_ip);
+		if (parse_foreign_ip(&cleandns))
 			return EXIT_FAILURE;
-		}
-		cleandns.foreign_net.name = cleandns.foreign_ip;
 	}
 
 	if (parse_chnroute(&cleandns) != 0)
@@ -2257,7 +2251,7 @@ static int feedback_net_list(cleandns_ctx *cleandns, chnroute_list_t *list)
 static int parse_chnroute(cleandns_ctx* cleandns)
 {
 	char *s, *p;
-	int i,r;
+	int r;
 	chnroute_list_t list;
 
 	memset(&list, 0, sizeof(chnroute_list_t));
@@ -2266,7 +2260,7 @@ static int parse_chnroute(cleandns_ctx* cleandns)
 
 	s = strdup(cleandns->chnroute_file);
 
-	for (i = 0, p = strtok(s, ",");
+	for (p = strtok(s, ",");
 		p && *p;
 		p = strtok(NULL, ",")) {
 
@@ -2283,6 +2277,52 @@ static int parse_chnroute(cleandns_ctx* cleandns)
 	free_chnroute_list(&list.items);
 
 	return r;
+}
+
+static int parse_china_foreign_ip_single(subnet_t *subnet, const char *s)
+{
+	if (ns_ecs_parse_subnet((struct sockaddr*)(&subnet->addr),
+		&subnet->mask, s) != 0) {
+		loge("Invalid addr %s\n", s);
+		return -1;
+	}
+	free(subnet->name);
+	subnet->name = strdup(s);
+	return 0;
+}
+
+static int parse_china_foreign_ip(subnet_t *subnet4, subnet_t *subnet6, const char *str)
+{
+	char *s, *p;
+
+	s = strdup(str);
+
+	for (p = strtok(s, ",");
+		p && *p;
+		p = strtok(NULL, ",")) {
+		if (is_ipv6(p)) {
+			if (parse_china_foreign_ip_single(subnet6, p))
+				return -1;
+		}
+		else {
+			if (parse_china_foreign_ip_single(subnet4, p))
+				return -1;
+		}
+	}
+
+	free(s);
+
+	return 0;
+}
+
+static int parse_china_ip(cleandns_ctx* cleandns)
+{
+	return parse_china_foreign_ip(&cleandns->china_net, &cleandns->china_net6, cleandns->china_ip);
+}
+
+static int parse_foreign_ip(cleandns_ctx* cleandns)
+{
+	return parse_china_foreign_ip(&cleandns->foreign_net, &cleandns->foreign_net6, cleandns->foreign_ip);
 }
 
 /*left trim*/
@@ -2680,6 +2720,15 @@ static void free_cleandns(cleandns_ctx *cleandns)
 	free(cleandns->log_file);
 	free(cleandns->proxy);
 
+	free(cleandns->chnroute_list.nets);
+	free(cleandns->chnroute_list.nets6);
+
+	free(cleandns->china_net.name);
+	free(cleandns->china_net6.name);
+	free(cleandns->foreign_net.name);
+	free(cleandns->foreign_net6.name);
+
+
 	for (i = 0; i < cleandns->dns_server_num; i++) {
 		dns_server_t* dnsserver = cleandns->dns_servers + i;
 		if (dnsserver->udpsock)
@@ -2718,7 +2767,11 @@ Forward DNS requests with ECS (edns-client-subnet) support.\n\
 Options:\n\
 \n\
   -l CHINA_IP           China ip address, e.g. 114.114.114.114/24.\n\
+                        Use comma to separate IPv4 and IPv6,\n\
+                        e.g. 114.114.114.114/24,2405:2d80::/32.\n\
   -f FOREIGN_IP         Foreign ip address, e.g. 8.8.8.8/24.\n\
+                        Use comma to separate IPv4 and IPv6,\n\
+                        e.g. 8.8.8.8/24,2001:df2:8300::/48.\n\
   -c CHNROUTE_FILE      Path to china route file, default: " DEFAULT_CHNROUTE_FILE ".\n\
                         Use comma to separate multi files, e.g. chnroute_ipv4.txt,chnroute_ipv6.txt.\n\
   -b BIND_ADDR          Address that listens, default: " DEFAULT_LISTEN_ADDR ".\n\

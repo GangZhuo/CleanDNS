@@ -77,7 +77,7 @@ typedef struct req_t {
 } req_t;
 
 typedef struct subnet_t {
-	const char *name;
+	char *name;
 	struct sockaddr_storage addr;
 	int mask;
 } subnet_t;
@@ -128,6 +128,8 @@ typedef struct cleandns_ctx {
 	int dns_server_num;
 	subnet_t china_net;
 	subnet_t foreign_net;
+	subnet_t china_net6;
+	subnet_t foreign_net6;
 	listen_t listens[MAX_LISTEN];
 	int listen_num;
 	char buf[NS_PAYLOAD_SIZE + PROXY_HEAD_LEN];
