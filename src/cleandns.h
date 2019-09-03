@@ -89,7 +89,7 @@ typedef struct net_mask_t {
 
 typedef struct net_mask6_t {
 	uint32_t net[4];
-	int cidr;
+	uint32_t mask[4];
 } net_mask6_t;
 
 typedef struct net_list_t {

@@ -168,9 +168,16 @@ youtube-ui-china.l.google.com. 95 IN	A	74.125.203.101
 ;; MSG SIZE  rcvd: 443
 ```
 
-### Update chnroute
+### Update chnroute (IPv4)
 
 See [About chnroute] on [ChinaDNS].
+
+### Update chnroute (IPv6)
+
+You can generate latest chnroute6.txt using this command:
+
+    curl 'http://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest' | \
+	grep ipv6 | grep CN | awk -F\| '{ printf("%s/%d\n", $4, $5) }' > chnroute6.txt
 
 ## References
 

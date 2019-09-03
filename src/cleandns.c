@@ -1932,6 +1932,18 @@ static int cmp_net_mask(const void *a, const void *b)
 	return ((net_mask_t *)a)->net - ((net_mask_t *)b)->net;
 }
 
+static int cmp_net_mask6(const void *a, const void *b)
+{
+	const net_mask6_t *x = a;
+	const net_mask6_t *y = b;
+	int i;
+	for (i = 0; i < 4; i++) {
+		if (x->net[i] < y->net[i]) return -1;
+		else if (x->net[i] > y->net[i]) return 1;
+	}
+	return 0;
+}
+
 static int test_ip_in_list4(struct in_addr *ip, const net_list_t *netlist)
 {
 	int l = 0, r = netlist->entries - 1;
@@ -1963,10 +1975,42 @@ static int test_ip_in_list4(struct in_addr *ip, const net_list_t *netlist)
     return 1;
 }
 
-static int test_ip_in_list6(struct in_addr6* ip, const net_list_t* netlist)
+static int test_ip_in_list6(struct in_addr6 *ip, const net_list_t *netlist)
 {
-	/*TODO:*/
-	return 0;
+	int l = 0, r = netlist->entries6 - 1;
+	int m, cmp;
+	int i;
+	net_mask6_t ip_net;
+	net_mask6_t *find;
+	if (netlist->entries6 == 0)
+		return 0;
+	memcpy(ip_net.net, ip->s6_addr, 16);
+	for (i = 0; i < 4; i++) {
+		ip_net.net[i] = ntohl(ip_net.net[i]);
+	}
+	while (l != r) {
+		m = (l + r) / 2;
+		cmp = cmp_net_mask6(&ip_net, &netlist->nets6[m]);
+		if (cmp < 0) {
+			if (r != m)
+				r = m;
+			else
+				break;
+		}
+		else {
+			if (l != m)
+				l = m;
+			else
+				break;
+		}
+	}
+	find = &netlist->nets6[l];
+	for (i = 0; i < 4; i++) {
+		if ((find->net[i] ^ ip_net.net[i]) & find->mask[i]) {
+			return 0;
+		}
+	}
+	return 1;
 }
 
 static int test_addr_in_list(struct sockaddr* addr, const net_list_t* netlist)
@@ -2018,7 +2062,7 @@ static int parse_netmask(net_mask_t *netmask, char *line)
 {
     char *sp_pos;
     struct in_addr ip;
-    sp_pos = strchr(line, '/');
+	sp_pos = strchr(line, '/');
     if (sp_pos) {
         *sp_pos = 0;
         netmask->mask = (1 << (32 - atoi(sp_pos + 1))) - 1;
@@ -2033,21 +2077,22 @@ static int parse_netmask(net_mask_t *netmask, char *line)
     }
     netmask->net = ntohl(ip.s_addr);
     if (sp_pos) *sp_pos = '/';
-    return 0;
+	return 0;
 }
 
 static int parse_netmask6(net_mask6_t *netmask, char *line)
 {
 	char* sp_pos;
 	struct in_addr6 ip;
-	int i;
+	int i,cidr;
+	int quotient, remainder;
 	sp_pos = strchr(line, '/');
 	if (sp_pos) {
 		*sp_pos = 0;
-		netmask->cidr = atoi(sp_pos + 1);
+		cidr = atoi(sp_pos + 1);
 	}
 	else {
-		netmask->cidr = 128;
+		cidr = 128;
 	}
 	if (inet_pton(AF_INET6, line, &ip) == 0) {
 		if (sp_pos) *sp_pos = '/';
@@ -2057,6 +2102,14 @@ static int parse_netmask6(net_mask6_t *netmask, char *line)
 	memcpy(netmask->net, ip.s6_addr, 16);
 	for (i = 0; i < 4; i++) {
 		netmask->net[i] = ntohl(netmask->net[i]);
+	}
+	memset(netmask->mask, 0, sizeof(netmask->mask));
+	quotient = cidr / 32;
+	remainder = cidr % 32;
+	for (i = 0; i < quotient; i++)
+		netmask->mask[i] = UINT32_MAX;
+	if (remainder > 0) {
+		netmask->mask[quotient] = (((uint32_t)1 << (32 - remainder)) - 1) ^ UINT32_MAX;
 	}
 	if (sp_pos)* sp_pos = '/';
 	return 0;
@@ -2196,7 +2249,7 @@ static int feedback_net_list(cleandns_ctx *cleandns, chnroute_list_t *list)
 
 	qsort(netlist->nets, netlist->entries, sizeof(net_mask_t), cmp_net_mask);
 
-	/*TODO: sort net6*/
+	qsort(netlist->nets6, netlist->entries6, sizeof(net_mask6_t), cmp_net_mask6);
 
 	return 0;
 }
@@ -2664,28 +2717,31 @@ Forward DNS requests with ECS (edns-client-subnet) support.\n\
 \n\
 Options:\n\
 \n\
-  -l CHINA_IP           china ip address, e.g. 114.114.114.114/24.\n\
-  -f FOREIGN_IP         foreign ip address, e.g. 8.8.8.8/24.\n\
-  -c CHNROUTE_FILE      path to china route file, default: " DEFAULT_CHNROUTE_FILE ".\n\
-  -b BIND_ADDR          address that listens, e.g. 127.0.0.1:5354,[::1]:5354, default: " DEFAULT_LISTEN_ADDR ".\n\
-  -p BIND_PORT          port that listens, default: " DEFAULT_LISTEN_PORT ".\n\
+  -l CHINA_IP           China ip address, e.g. 114.114.114.114/24.\n\
+  -f FOREIGN_IP         Foreign ip address, e.g. 8.8.8.8/24.\n\
+  -c CHNROUTE_FILE      Path to china route file, default: " DEFAULT_CHNROUTE_FILE ".\n\
+                        Use comma to separate multi files, e.g. chnroute_ipv4.txt,chnroute_ipv6.txt.\n\
+  -b BIND_ADDR          Address that listens, default: " DEFAULT_LISTEN_ADDR ".\n\
+                        Use comma to separate multi addresses, e.g. 127.0.0.1:5354,[::1]:5354.\n\
+  -p BIND_PORT          Port that listen on, default: " DEFAULT_LISTEN_PORT ".\n\
+                        The port specified in \"-b\" is priority .\n\
   -s DNS                DNS server to use, default: " DEFAULT_DNS_SERVER ".\n\
                         tcp://IP[:PORT] means forward request to upstream by TCP protocol,\n\
-                        [udp://]IP[:PORT] means forward request to upstream by UDP protocol,\n\
-                        default forward by UDP protocol, and default port of upstream is 53.\n\
-  -m                    use DNS compression pointer mutation, only available on foreign dns server.\n\
-  -t TIMEOUT            timeout, default: " DEFAULT_TIMEOUT ".\n\
-  --daemon              daemonize.\n\
+                        [udp://]IP[:PORT] means forward request to upstream by UDP protocol.\n\
+                        Forward by UDP protocol default, and default port of upstream is 53.\n\
+  -m                    Use DNS compression pointer mutation, only available on foreign dns server.\n\
+  -t TIMEOUT            Timeout, default: " DEFAULT_TIMEOUT ".\n\
+  --daemon              Daemonize.\n\
   --pid=PID_FILE_PATH   pid file, default: " DEFAULT_PID_FILE ", only available on daemonize.\n\
-  --log=LOG_FILE_PATH   write log to a file.\n\
-  --log-level=LOG_LEVEL log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
-  --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.\n\
-  --lazy                disable pollution detection.\n\
-  --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only available on foreign dns server.\n\
-                        only support socks5 with no authentication.\n\
-  -v                    verbose logging.\n\
-  -h                    show this help message and exit.\n\
-  -V                    print version and exit.\n\
+  --log=LOG_FILE_PATH   Write log to a file.\n\
+  --log-level=LOG_LEVEL Log level, range: [0, 7], default: " LOG_DEFAULT_LEVEL_NAME ".\n\
+  --config=CONFIG_PATH  Config file, find sample at https://github.com/GangZhuo/CleanDNS.\n\
+  --lazy                Disable pollution detection.\n\
+  --proxy=PROXY_URL     Proxy server, e.g. socks5://127.0.0.1:1080, only available on foreign dns server.\n\
+                        Now, only socks5 with no authentication is supported.\n\
+  -v                    Verbose logging.\n\
+  -h                    Show this help message and exit.\n\
+  -V                    Print version and then exit.\n\
 \n\
 Online help: <https://github.com/GangZhuo/CleanDNS>\n");
 }
