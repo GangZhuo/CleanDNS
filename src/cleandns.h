@@ -77,6 +77,7 @@ typedef struct req_t {
 } req_t;
 
 typedef struct subnet_t {
+	int is_set;
 	char *name;
 	struct sockaddr_storage addr;
 	int mask;

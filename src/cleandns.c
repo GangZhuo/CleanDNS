@@ -792,36 +792,63 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 
 static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, req_t *req)
 {
-	int i;
+	int i, r;
 	dns_server_t* dns_server;
+	int compression;
+	subnet_t *subnets[2];
+	int subnet_num;
+	sock_t sock;
+	struct sockaddr *to;
+	socklen_t tolen;
 
 	logd("request msg:\n");
 	ns_print(msg);
 
-	if (cleandns->china_ip == NULL && cleandns->foreign_ip == NULL) {
-		for (i = 0; i < cleandns->dns_server_num; i++) {
-			dns_server = cleandns->dns_servers + i;
+	for (i = 0; i < cleandns->dns_server_num; i++) {
+
+		dns_server = cleandns->dns_servers + i;
+		compression = dns_server->is_foreign;
+		sock = dns_server->udpsock;
+		to = dns_server->addr.addrinfo->ai_addr;
+		tolen = (socklen_t)dns_server->addr.addrinfo->ai_addrlen;
+
+		if (dns_server->is_foreign) {
+			msg->id = (uint16_t)(req->id + cleandns->dns_server_num + i);
+		}
+		else {
 			msg->id = (uint16_t)(req->id + i);
-			if (send_nsmsg(cleandns, msg, dns_server->is_foreign, NULL,
-				dns_server->udpsock, dns_server->addr.addrinfo->ai_addr,
-				(socklen_t)dns_server->addr.addrinfo->ai_addrlen, req, i) != 0) {
-				loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
+		}
+
+		subnet_num = 0;
+
+		if (to->sa_family == AF_INET6) {
+			if (cleandns->china_net6.is_set)
+				subnets[subnet_num++] = &cleandns->china_net6;
+			if (cleandns->foreign_net6.is_set)
+				subnets[subnet_num++] = &cleandns->foreign_net6;
+		}
+		else {
+			if (cleandns->china_net.is_set)
+				subnets[subnet_num++] = &cleandns->china_net;
+			if (cleandns->foreign_net.is_set)
+				subnets[subnet_num++] = &cleandns->foreign_net;
+		}
+
+		if (subnet_num == 0) {
+			r = send_nsmsg(cleandns, msg, compression, NULL, sock, to, tolen, req, i);
+			if (r != 0) {
+				loge("handle_listen_sock_recv_nsmsg: failed to send 'msg'.\n");
 			}
 			else {
 				req->wait_num++;
 			}
 		}
-		
-	}
-	else {
-		if (cleandns->china_ip) {
-			for (i = 0; i < cleandns->dns_server_num; i++) {
-				dns_server = cleandns->dns_servers + i;
-				msg->id = (uint16_t)(req->id + i);
-				if (send_nsmsg(cleandns, msg, dns_server->is_foreign, &cleandns->china_net,
-					dns_server->udpsock, dns_server->addr.addrinfo->ai_addr,
-					(socklen_t)dns_server->addr.addrinfo->ai_addrlen, req, i) != 0) {
-					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'china_ip'.\n");
+		else {
+			int j;
+			for (j = 0; j < subnet_num; j++) {
+				r = send_nsmsg(cleandns, msg, compression, subnets[j], sock, to, tolen, req, i);
+				if (r != 0) {
+					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg'.\n");
 				}
 				else {
 					req->wait_num++;
@@ -829,20 +856,6 @@ static int handle_listen_sock_recv_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg, 
 			}
 		}
 
-		if (cleandns->foreign_ip) {
-			for (i = 0; i < cleandns->dns_server_num; i++) {
-				dns_server = cleandns->dns_servers + i;
-				msg->id = (uint16_t)(req->id + cleandns->dns_server_num + i);
-				if (send_nsmsg(cleandns, msg, dns_server->is_foreign, &cleandns->foreign_net,
-					dns_server->udpsock, dns_server->addr.addrinfo->ai_addr,
-					(socklen_t)dns_server->addr.addrinfo->ai_addrlen, req, i) != 0) {
-					loge("handle_listen_sock_recv_nsmsg: failed to send 'msg' with 'foreign_ip'.\n");
-				}
-				else {
-					req->wait_num++;
-				}
-			}
-		}
 	}
 
 	if (req->wait_num == 0) {
@@ -2288,12 +2301,16 @@ static int parse_china_foreign_ip_single(subnet_t *subnet, const char *s)
 	}
 	free(subnet->name);
 	subnet->name = strdup(s);
+	subnet->is_set = 1;
 	return 0;
 }
 
 static int parse_china_foreign_ip(subnet_t *subnet4, subnet_t *subnet6, const char *str)
 {
 	char *s, *p;
+
+	if (!str) return -1;
+	if (!(*str)) return -1;
 
 	s = strdup(str);
 
