@@ -868,8 +868,7 @@ static int send_nsmsg_to_dns_server(cleandns_ctx *cleandns, ns_msg_t *msg,
 	}
 	else {
 		if (sendto(sock, s.array, s.size, 0, to, tolen) == -1) {
-			int err = WSAGetLastError();
-			loge("send_nsmsg_to_dns_server: cannot send data to '%s': %s\n", get_addrname(to), gai_strerror(err));
+			loge("send_nsmsg_to_dns_server: cannot send data to '%s'\n", get_addrname(to));
 			stream_free(&s);
 			return -1;
 		}
