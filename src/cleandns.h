@@ -35,7 +35,7 @@ extern "C" {
 
 typedef struct netaddr_t {
 	int protocol; /* IPPROTO_UDP or IPPROTO_TCP */
-	struct addrinfo* addrinfo;
+	struct addrinfo *addrinfo;
 } netaddr_t;
 
 typedef struct listen_t {
@@ -107,7 +107,9 @@ typedef struct dns_server_t {
 } dns_server_t;
 
 typedef struct proxy_server_t {
+	char *protocol;
 	struct addrinfo *addr;
+	sock_t udpsock;
 } proxy_server_t;
 
 typedef struct cleandns_ctx {
