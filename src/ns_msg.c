@@ -1439,7 +1439,7 @@ static void ns_rdata_print_edns(ns_rr_t *rr)
 						if (ecs.family == ADDR_FAMILY_NUM_IP) {
 							inet_ntop(AF_INET, &ecs.subnet, ipname, INET6_ADDRSTRLEN);
 						}
-						else if (ecs.family == ADDR_FAMILY_NUM_IP) {
+						else if (ecs.family == ADDR_FAMILY_NUM_IP6) {
 							inet_ntop(AF_INET6, &ecs.subnet, ipname, INET6_ADDRSTRLEN);
 						}
 						else {
