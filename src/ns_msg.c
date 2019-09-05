@@ -819,13 +819,10 @@ static int ns_set_ecs4(ns_opt_t* opt, struct sockaddr_in* addr, int srcprefix, i
 	stream_t s = STREAM_INIT();
 	uint8_t* optdata;
 	int addrlen;
-	uint8_t saddr[4] = {
-		addr->sin_addr.s_net,
-		addr->sin_addr.s_host,
-		addr->sin_addr.s_lh,
-		addr->sin_addr.s_impno,
-	};
+	uint8_t saddr[4];
 	uint8_t mask = 0xff;
+
+	memcpy(saddr, (uint8_t*)(&addr->sin_addr), 4);
 
 	addrlen = srcprefix / 8;
 	if (srcprefix % 8)

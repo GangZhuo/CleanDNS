@@ -118,7 +118,7 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv);
 static void print_args(cleandns_ctx* cleandns);
 static int parse_chnroute(cleandns_ctx *cleandns);
 static int test_ip_in_list4(struct in_addr *ip, const net_list_t *netlist);
-static int test_ip_in_list6(struct in_addr6* ip, const net_list_t* netlist);
+static int test_ip_in_list6(struct in6_addr* ip, const net_list_t* netlist);
 static int test_addr_in_list(struct sockaddr* addr, const net_list_t* netlist);
 static int resolve_listens(cleandns_ctx* cleandns);
 static int resolve_dns_server(cleandns_ctx *cleandns);
@@ -650,7 +650,7 @@ static int get_answers(stream_t *s, ns_msg_t *msg)
 			len += r;
 		}
 		else if (rr->type == NS_QTYPE_AAAA) {
-			struct in_addr6 *addr = (struct in_addr6 *)rr->rdata;
+			struct in6_addr*addr = (struct in6_addr*)rr->rdata;
 			static char ipname[INET6_ADDRSTRLEN];
 			inet_ntop(AF_INET6, addr, ipname, INET6_ADDRSTRLEN);
 			r = stream_writef(s, len > 0 ? ", %s" : "%s", ipname);
@@ -1052,7 +1052,7 @@ static int check_rr(cleandns_ctx *cleandns, ns_rr_t *rr)
 		}
 	}
 	else if (rr->type == NS_QTYPE_AAAA) {
-		struct in_addr6 *addr = (struct in_addr6 *)rr->rdata;
+		struct in6_addr *addr = (struct in6_addr*)rr->rdata;
 		if (test_ip_in_list6(addr, &cleandns->chnroute_list)) {
 			return FLG_AAAA_CHN;
 		}
@@ -2156,7 +2156,7 @@ static int test_ip_in_list4(struct in_addr *ip, const net_list_t *netlist)
     return 1;
 }
 
-static int test_ip_in_list6(struct in_addr6 *ip, const net_list_t *netlist)
+static int test_ip_in_list6(struct in6_addr*ip, const net_list_t *netlist)
 {
 	int l = 0, r = netlist->entries6 - 1;
 	int m, cmp;
@@ -2264,7 +2264,7 @@ static int parse_netmask(net_mask_t *netmask, char *line)
 static int parse_netmask6(net_mask6_t *netmask, char *line)
 {
 	char* sp_pos;
-	struct in_addr6 ip;
+	struct in6_addr ip;
 	int i,cidr;
 	int quotient, remainder;
 	sp_pos = strchr(line, '/');
