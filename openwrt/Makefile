@@ -38,6 +38,7 @@ define Package/CleanDNS/install
 	$(INSTALL_BIN) files/cleandns.init $(1)/etc/init.d/cleandns
 	$(INSTALL_DIR) $(1)/etc
 	$(INSTALL_DATA) files/cleandns.chnroute $(1)/etc/cleandns_chnroute.txt
+	$(INSTALL_DATA) files/cleandns.chnroute6 $(1)/etc/cleandns_chnroute6.txt
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) files/cleandns.config $(1)/etc/config/cleandns
 endef
