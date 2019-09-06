@@ -1901,13 +1901,13 @@ static int parse_url(char *s, char **protocol, char **host, char **port)
 	if (*s == '[') {
 		p = strrchr(s, ']');
 		if (p) {
-			*host = s;
+			*host = s + 1;
+			*p = '\0';
 			p++;
 			if (*p == ':')
 				*port = p + 1;
 			else
 				*port = NULL;
-			*p = '\0';
 			return 0;
 		}
 		else {
