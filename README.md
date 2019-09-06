@@ -175,7 +175,7 @@ config cfg
 
 ```
 config cfg
-	option bind_addr '0.0.0.0,[::1]'
+	option bind_addr '[::0]'
 	option bind_port '5354'
 	option chnroute '/etc/cleandns_chnroute.txt,/etc/cleandns_chnroute6.txt'
 	option china_ip '203.208.32.0/24,240e:3a1:4a51::/35'
