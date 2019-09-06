@@ -427,7 +427,7 @@ static int do_loop(cleandns_ctx *cleandns)
 		}
 
 		if (select((int)max_fd + 1, &readset, &writeset, &errorset, &timeout) == -1) {
-			loge("do_loop(): select error\n");
+			loge("do_loop() - select() error: %d %s \n", errno, strerror(errno));
 			return -1;
 		}
 
@@ -738,7 +738,8 @@ static int send_nsmsg(cleandns_ctx *cleandns, ns_msg_t *msg,
 	bprint(s.array, s.size);
 
 	if (sendto(sock, s.array, s.size, 0, to, tolen) == -1) {
-		loge("send_nsmsg: cannot send data to '%s'\n", get_addrname(to));
+		loge("send_nsmsg(): cannot send data to '%s': sendto() error: %d %s\n",
+			get_addrname(to), errno, strerror(errno));
 		stream_free(&s);
 		return -1;
 	}
@@ -867,7 +868,8 @@ static int send_nsmsg_to_dns_server(cleandns_ctx *cleandns, ns_msg_t *msg,
 	}
 	else {
 		if (sendto(sock, s.array, s.size, 0, to, tolen) == -1) {
-			loge("send_nsmsg_to_dns_server: cannot send data to '%s'\n", get_addrname(to));
+			loge("send_nsmsg_to_dns_server(): cannot send data to '%s': sendto() error: %d %s\n",
+				get_addrname(to), errno, strerror(errno));
 			stream_free(&s);
 			return -1;
 		}
@@ -1027,9 +1029,11 @@ static int handle_listen_sock(cleandns_ctx *cleandns, listen_t *listen)
            queue_remove(cleandns, req);
            free_req(req);
            return -1;
-       }
-       else
-           return 0;
+        }
+		else {
+			loge("handle_listen_sock() - recvfrom() error: %d %s\n", errno, strerror(errno));
+			return 0;
+		}
     }
     else {
         loge("handle_listen_sock: recvfrom()\n");
@@ -1392,7 +1396,7 @@ static int handle_remote_udprecv(cleandns_ctx* cleandns, dns_server_t* dnsserver
 			return 0;
 	}
 	else {
-		loge("handle_remote_udprecv: recvfrom() error\n");
+		loge("handle_remote_udprecv() - recvfrom() error: %d %s\n", errno, strerror(errno));
 		return -1;
 	}
 }
@@ -1576,7 +1580,7 @@ static int handle_remote_tcprecv(cleandns_ctx* cleandns, req_t *req, conn_t *con
 			return 0;
 		}
 		else {
-			loge("tcp_recv: %s %d %s\n",
+			loge("tcp_recv() - recv() error: %s %d %s\n",
 				get_addrname(dns_addr), err, strerror(err));
 			free_conn(conn);
 			return -1;
@@ -1592,18 +1596,18 @@ static int setnonblock(sock_t sock)
 	u_long iMode = 1;
 	iResult = ioctlsocket(sock, FIONBIO, &iMode);
 	if (iResult != NO_ERROR) {
-		loge("ioctlsocket failed with error: %ld\n", iResult);
+		loge("ioctlsocket() failed with error: %ld. %d %s\n", iResult, errno, strerror(errno));
 		return -1;
 	}
 #else
 	int flags;
 	flags = fcntl(sock, F_GETFL, 0);
 	if (flags == -1) {
-		loge("fcntl\n");
+		loge("fcntl() error: %d %s\n", errno, strerror(errno));
 		return -1;
 	}
 	if (fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
-		loge("fcntl\n");
+		loge("fcntl() error: %d %s\n", errno, strerror(errno));
 		return -1;
 	}
 #endif
@@ -1659,7 +1663,7 @@ static int tcp_send(cleandns_ctx* cleandns, conn_t* conn)
 	if (nsend == -1) {
 		int err = errno;
 		if (!is_eagain(err)) {
-			loge("tcp_send() error: %s %s \n", get_addrname(to_addr), strerror(err));
+			loge("tcp_send() - send() error: %s %d %s \n", get_addrname(to_addr), err, strerror(err));
 			return -1;
 		}
 		logd("send() EAGAIN (TCP) %s\n", get_addrname(to_addr));
@@ -1693,7 +1697,8 @@ static int connect_server(cleandns_ctx *cleandns, conn_t *conn, dns_server_t *se
 
 		sock = socket(proxy->addr->ai_family, SOCK_STREAM, IPPROTO_TCP);
 		if (sock == -1) {
-			loge("connect_server(): Can't create proxy socket to '%s'\n", get_dnsservername(server));
+			loge("connect_server(): Can't create proxy socket to '%s'. socket() error: %d %s\n",
+				get_dnsservername(server), errno, strerror(errno));
 			return -1;
 	}
 
@@ -1727,7 +1732,7 @@ static int connect_server(cleandns_ctx *cleandns, conn_t *conn, dns_server_t *se
 			conn->sock = sock;
 			return 0;
 		}
-		loge("connect_server(): connect to '%s' error. %d %s\n",
+		loge("connect_server(): connect to '%s' error. connect() error: %d %s\n",
 			get_dnsservername(server), err, strerror(err));
 		close(sock);
 		return -1;
@@ -1757,7 +1762,7 @@ static int init_listen(cleandns_ctx *cleandns, listen_t *ctx)
 		is_tcp ? IPPROTO_TCP : IPPROTO_UDP);
 
 	if (!sock) {
-		loge("init_listen(): create socket failed\n");
+		loge("init_listen() - socket() error: %d %s\n", errno, strerror(errno));
 		return -1;
 	}
 
@@ -1774,7 +1779,8 @@ static int init_listen(cleandns_ctx *cleandns, listen_t *ctx)
 #endif
 
 	if (bind(sock, addrinfo->ai_addr, (int)addrinfo->ai_addrlen) != 0) {
-		loge("Can't bind address %s\n", get_addrname(addrinfo->ai_addr));
+		loge("Can't bind address %s. bind() error: %d %s\n",
+			get_addrname(addrinfo->ai_addr), errno, strerror(errno));
 		close(sock);
 		return -1;
 	}
@@ -1782,7 +1788,8 @@ static int init_listen(cleandns_ctx *cleandns, listen_t *ctx)
 	if (is_tcp) {
 
 		if (listen(sock, LISTEN_BACKLOG) != 0) {
-			loge("Can't listen on %s\n", get_addrname(addrinfo->ai_addr));
+			loge("Can't listen on %s. listen() error: %d %s\n",
+				get_addrname(addrinfo->ai_addr), errno, strerror(errno));
 			close(sock);
 			return -1;
 		}
@@ -1832,7 +1839,7 @@ static int init_dnsservers(cleandns_ctx *cleandns)
 			IPPROTO_UDP);
 
 		if (!sock) {
-			loge("init_dnsservers(): create socket failed\n");
+			loge("init_dnsservers() - socket() error: %d %s\n", errno, strerror(errno));
 			return -1;
 		}
 
@@ -1863,7 +1870,8 @@ static int init_proxy_udpsock(cleandns_ctx* cleandns)
 		IPPROTO_UDP);
 
 	if (!sock) {
-		loge("init_proxy_udpsock(): create socket failed\n");
+		loge("init_proxy_udpsock() - socket() error: %d %s\n",
+			errno, strerror(errno));
 		return -1;
 	}
 
@@ -1975,7 +1983,7 @@ static int resolve_netaddr(
 		SOCK_DGRAM;
 
 	if ((r = getaddrinfo(ip, port, &hints, &addr->addrinfo)) != 0) {
-		loge("%s: %s:%s\n", gai_strerror(r), ip, port);
+		loge("resolve_netaddr() - getaddrinfo() error: %s %s:%s\n", gai_strerror(r), ip, port);
 		return -1;
 	}
 
@@ -2009,7 +2017,7 @@ static int resolve_proxy_server(cleandns_ctx* cleandns)
 	hints.ai_socktype = SOCK_STREAM;
 
 	if ((r = getaddrinfo(ip, port, &hints, &proxy_server->addr)) != 0) {
-		loge("%s: %s:%s\n", gai_strerror(r), ip, port);
+		loge("resolve_proxy_server() - getaddrinfo() error: %s %s:%s\n", gai_strerror(r), ip, port);
 		free(s);
 		return -1;
 	}
@@ -2073,7 +2081,8 @@ static int resolve_listens(cleandns_ctx* cleandns)
 		cleandns->listen_port);
 
 	if (cleandns->listen_num == -1) {
-		loge("resolve_listens(): resolve \"%s\" failed\n", cleandns->listen_addr);
+		loge("resolve_listens(): resolve \"%s\" failed\n",
+			cleandns->listen_addr);
 		return -1;
 	}
 
@@ -2095,7 +2104,8 @@ static int resolve_dns_server(cleandns_ctx *cleandns)
 		"53");
 
 	if (cleandns->dns_server_num == -1) {
-		loge("resolve_dns_server(): resolve \"%s\" failed\n", cleandns->dns_server);
+		loge("resolve_dns_server(): resolve \"%s\" failed\n",
+			cleandns->dns_server);
 		return -1;
 	}
 
@@ -2252,7 +2262,8 @@ static int parse_netmask(net_mask_t *netmask, char *line)
     }
     if (inet_pton(AF_INET, line, &ip) == 0) {
         if (sp_pos) *sp_pos = '/';
-        loge("invalid addr %s\n", line);
+        loge("invalid addr %s. parse_netmask() - inet_pton() error: %d %s\n",
+			line, errno, strerror(errno));
         return -1;
     }
     netmask->net = ntohl(ip.s_addr);
@@ -2276,7 +2287,8 @@ static int parse_netmask6(net_mask6_t *netmask, char *line)
 	}
 	if (inet_pton(AF_INET6, line, &ip) == 0) {
 		if (sp_pos) *sp_pos = '/';
-		loge("invalid addr %s\n", line);
+		loge("invalid addr %s. parse_netmask6() - inet_pton() error: %d %s\n",
+			line, errno, strerror(errno));
 		return -1;
 	}
 	memcpy(netmask->net, ip.s6_addr, 16);

@@ -790,8 +790,9 @@ int ns_ecs_parse_subnet(struct sockaddr *addr /*out*/, int *pmask /*out*/, const
 	if (is_ipv6) {
 		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)addr;
 		struct in6_addr *ip = &(addr6->sin6_addr);
-		if (inet_pton(AF_INET6, buf, ip) == 0) {
-			loge("invalid addr %s\n", str);
+		if (inet_pton(AF_INET6, buf, ip) != 1) {
+			loge("invalid addr %s. ns_ecs_parse_subnet() - inet_pton() error: %d %s\n",
+				str, errno, strerror(errno));
 			return -1;
 		}
 		addr6->sin6_family = AF_INET6;
@@ -800,8 +801,9 @@ int ns_ecs_parse_subnet(struct sockaddr *addr /*out*/, int *pmask /*out*/, const
 	else {
 		struct sockaddr_in *addr4 = (struct sockaddr_in *)addr;
 		struct in_addr *ip = &(addr4->sin_addr);
-		if (inet_pton(AF_INET, buf, ip) == 0) {
-			loge("invalid addr %s\n", str);
+		if (inet_pton(AF_INET, buf, ip) != 1) {
+			loge("invalid addr %s. ns_ecs_parse_subnet() - inet_pton() error: %d %s\n",
+				str, errno, strerror(errno));
 			return -1;
 		}
 		addr4->sin_family = AF_INET;
@@ -1432,7 +1434,7 @@ static void ns_rdata_print_edns(ns_rr_t *rr)
 				if (opt->code == NS_OPTCODE_ECS) {
 					ns_ecs_t ecs;
 					if (ns_parse_ect(&ecs, opt->data, opt->length)) {
-						char ipname[INET6_ADDRSTRLEN];
+						char ipname[INET6_ADDRSTRLEN] = { 0 };
 						if (ecs.family == ADDR_FAMILY_NUM_IP) {
 							inet_ntop(AF_INET, &ecs.subnet, ipname, INET6_ADDRSTRLEN);
 						}
