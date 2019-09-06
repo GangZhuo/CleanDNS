@@ -86,7 +86,7 @@ make LDFLAGS=-llog
 ```
 $>cleandns.exe -h
 
-CleanDNS 0.4.1
+CleanDNS 0.4.2
 
 Usage:
 
@@ -100,28 +100,93 @@ Forward DNS requests with ECS (edns-client-subnet) support.
 
 Options:
 
-  -l CHINA_IP           china ip address, e.g. 114.114.114.114/24.
-  -f FOREIGN_IP         foreign ip address, e.g. 8.8.8.8/24.
-  -c CHNROUTE_FILE      path to china route file, default: chnroute.txt.
-  -b BIND_ADDR          address that listens, default: 0.0.0.0.
-  -p BIND_PORT          port that listens, default: 5354.
+  -l CHINA_IP           China ip address, e.g. 114.114.114.114/24.
+                        Use comma to separate IPv4 and IPv6,
+                        e.g. 114.114.114.114/24,2405:2d80::/32.
+  -f FOREIGN_IP         Foreign ip address, e.g. 8.8.8.8/24.
+                        Use comma to separate IPv4 and IPv6,
+                        e.g. 8.8.8.8/24,2001:df2:8300::/48.
+  -c CHNROUTE_FILE      Path to china route file, default: chnroute.txt.
+                        Use comma to separate multi files, e.g. chnroute_ipv4.txt,chnroute_ipv6.txt.
+  -b BIND_ADDR          Address that listens, default: 0.0.0.0.
+                        Use comma to separate multi addresses, e.g. 127.0.0.1:5354,[::1]:5354.
+  -p BIND_PORT          Port that listen on, default: 5354.
+                        The port specified in "-b" is priority .
   -s DNS                DNS server to use, default: 8.8.8.8:53,114.114.114.114:53.
                         tcp://IP[:PORT] means forward request to upstream by TCP protocol,
-                        [udp://]IP[:PORT] means forward request to upstream by UDP protocol,
-                        default forward by UDP protocol, and default port of upstream is 53.
-  -m                    use DNS compression pointer mutation, only available on foreign dns server.
-  -t TIMEOUT            timeout, default: 5.
-  --daemon              daemonize.
+                        [udp://]IP[:PORT] means forward request to upstream by UDP protocol.
+                        Forward by UDP protocol default, and default port of upstream is 53.
+  -m                    Use DNS compression pointer mutation, only available on foreign dns server.
+  -t TIMEOUT            Timeout, default: 5.
+  --daemon              Daemonize.
   --pid=PID_FILE_PATH   pid file, default: /var/run/cleandns.pid, only available on daemonize.
-  --log=LOG_FILE_PATH   write log to a file.
-  --log-level=LOG_LEVEL log level, range: [0, 7], default: 5.
-  --config=CONFIG_PATH  config file, find sample at https://github.com/GangZhuo/CleanDNS.
-  --lazy                disable pollution detection.
-  --proxy=PROXY_URL     proxy server, e.g. socks5://127.0.0.1:1080, only available on foreign dns server.
-                        only support socks5 with no authentication.
-  -v                    verbose logging.
-  -h                    show this help message and exit.
-  -V                    print version and exit.
+  --log=LOG_FILE_PATH   Write log to a file.
+  --log-level=LOG_LEVEL Log level, range: [0, 7], default: 5.
+  --config=CONFIG_PATH  Config file, find sample at https://github.com/GangZhuo/CleanDNS.
+  --lazy                Disable pollution detection.
+  --proxy=PROXY_URL     Proxy server, e.g. socks5://127.0.0.1:1080, only available on foreign dns server.
+                        Now, only socks5 with no authentication is supported.
+  -v                    Verbose logging.
+  -h                    Show this help message and exit.
+  -V                    Print version and then exit.
+
+Online help: <https://github.com/GangZhuo/CleanDNS>
+```
+
+### Configuration Examples
+
+#### IPv4
+
+```
+config cfg
+	option bind_addr '0.0.0.0'
+	option bind_port '5354'
+	option chnroute '/etc/cleandns_chnroute.txt'
+	option china_ip '203.208.32.0/24'
+	option foreign_ip '172.217.12.0/24'
+	option dns_server '8.8.8.8:53'
+	option compression '1'
+	option timeout '5'
+	#option log_file '/var/log/cleandns.log'
+	option log_level '5'
+	option lazy '0'
+	#option proxy 'socks5://127.0.0.1:1080'
+```
+
+#### IPv6
+
+```
+config cfg
+	option bind_addr '[::1]'
+	option bind_port '5354'
+	option chnroute '/etc/cleandns_chnroute.txt,/etc/cleandns_chnroute6.txt'
+	option china_ip '240e:3a1:4a51::/35'
+	option foreign_ip '2607:8700:112:e65e::/35'
+	option dns_server '[2001:4860:4860::8888]:53'
+	option compression '1'
+	option timeout '5'
+	#option log_file '/var/log/cleandns.log'
+	option log_level '5'
+	option lazy '0'
+	#option proxy 'socks5://[::1]:1080'
+```
+
+#### Dual Stacks
+
+```
+config cfg
+	option bind_addr '0.0.0.0,[::1]'
+	option bind_port '5354'
+	option chnroute '/etc/cleandns_chnroute.txt,/etc/cleandns_chnroute6.txt'
+	option china_ip '203.208.32.0/24,240e:3a1:4a51::/35'
+	option foreign_ip '172.217.12.0/24,2607:8700:112:e65e::/35'
+	option dns_server '8.8.8.8:53,[2001:4860:4860::8888]:53'
+	option compression '1'
+	option timeout '5'
+	#option log_file '/var/log/cleandns.log'
+	option log_level '5'
+	option lazy '0'
+	#option proxy 'socks5://127.0.0.1:1080'
 ```
 
 ### Example
@@ -132,6 +197,10 @@ cleandns -m -s 8.8.8.8 -l 202.108.22.5/24 -vvv
 or
 
 cleandns -m -s 8.8.8.8 -l 202.108.22.5/24 -f 172.217.24.4/24 -vvv
+
+or
+
+cleandns --config=/etc/config/cleandns
 ```
 
 Remove `-l` and `-f` to disable "edns-client-subnet".
