@@ -189,7 +189,7 @@ config cfg
 	#option proxy 'socks5://127.0.0.1:1080'
 ```
 
-### Example
+### Examples
 
 ```bash
 cleandns -m -s 8.8.8.8 -l 202.108.22.5/24 -vvv
