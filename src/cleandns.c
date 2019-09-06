@@ -344,6 +344,7 @@ static int do_loop(cleandns_ctx *cleandns)
 	rbnode_list_item_t* item;
 	rbnode_t* n;
 	req_t* req;
+	int i;
 
 	req_list.cleandns = cleandns;
 
@@ -370,7 +371,7 @@ static int do_loop(cleandns_ctx *cleandns)
 
 		max_fd = 0;
 
-		for (int i = 0; i < cleandns->listen_num; i++) {
+		for (i = 0; i < cleandns->listen_num; i++) {
 			listen_t* listen = cleandns->listens + i;
 
 			max_fd = MAX(max_fd, listen->sock);
@@ -379,7 +380,7 @@ static int do_loop(cleandns_ctx *cleandns)
 			FD_SET(listen->sock, &errorset);
 		}
 
-		for (int i = 0; i < cleandns->dns_server_num; i++) {
+		for (i = 0; i < cleandns->dns_server_num; i++) {
 			dns_server_t* dnsserver = cleandns->dns_servers + i;
 
 			if (!dnsserver->udpsock) continue;
@@ -405,7 +406,6 @@ static int do_loop(cleandns_ctx *cleandns)
 			item = item->next;
 
 			if (req && req->conn_num > 0) {
-				int i;
 				conn_t* conn;
 				for (i = 0; i < req->conn_num; i++) {
 					conn = req->conns + i;
@@ -431,7 +431,7 @@ static int do_loop(cleandns_ctx *cleandns)
 			return -1;
 		}
 
-		for (int i = 0; i < cleandns->listen_num; i++) {
+		for (i = 0; i < cleandns->listen_num; i++) {
 			listen_t* listen = cleandns->listens + i;
 
 			if (FD_ISSET(listen->sock, &errorset)) {
@@ -443,7 +443,7 @@ static int do_loop(cleandns_ctx *cleandns)
 				handle_listen_sock(cleandns, listen);
 		}
 
-		for (int i = 0; i < cleandns->dns_server_num; i++) {
+		for (i = 0; i < cleandns->dns_server_num; i++) {
 			dns_server_t* dnsserver = cleandns->dns_servers + i;
 
 			if (!dnsserver->udpsock) continue;
@@ -477,7 +477,6 @@ static int do_loop(cleandns_ctx *cleandns)
 			item = item->next;
 
 			if (req) {
-				int i;
 				conn_t* conn;
 				for (i = 0; i < req->conn_num; i++) {
 					conn = req->conns + i;
@@ -2028,7 +2027,7 @@ static int resolve_netaddrs(
 	const char *default_port)
 {
 	char *s, *p, *url;
-	int i;
+	int i,j;
 	netaddr_t *addr;
 
 	s = strdup(str);
@@ -2043,7 +2042,7 @@ static int resolve_netaddrs(
 
 		if (resolve_netaddr(url, addr, default_port)) {
 			free(url);
-			for (int j = 0; j < i; j++) {
+			for (j = 0; j < i; j++) {
 				addr = (netaddr_t*)(((char*)addrs) + (size_t)element_size * j);
 				if (addr->addrinfo) {
 					freeaddrinfo(addr->addrinfo);
