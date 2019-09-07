@@ -115,6 +115,8 @@ static void free_cleandns(cleandns_ctx *cleandns);
 static void free_conn(conn_t* conn);
 static void queue_remove_bynode(cleandns_ctx* cleandns, rbnode_t* n);
 static int parse_args(cleandns_ctx *cleandns, int argc, char **argv);
+static int read_config_file(cleandns_ctx* cleandns, const char* config_file, int force);
+static int check_args(cleandns_ctx* cleandns);
 static void print_args(cleandns_ctx* cleandns);
 static int parse_chnroute(cleandns_ctx *cleandns);
 static int test_ip_in_list4(struct in_addr *ip, const net_list_t *netlist);
@@ -175,71 +177,25 @@ int main(int argc, char **argv)
 {
 	cleandns_ctx cleandns = { 0 };
 
+	memset(&cleandns, 0, sizeof(cleandns_ctx));
+
+	if (rbtree_init(&cleandns.queue) != 0)
+		return -1;
+
+	srand((unsigned int)time(NULL));
+
 #ifdef WINDOWS
 	win_init();
 	s_cleandns = &cleandns;
 #endif
 
-	if (init_cleandns(&cleandns) != 0)
-		return EXIT_FAILURE;
-
 	if (parse_args(&cleandns, argc, argv) != 0)
 		return EXIT_FAILURE;
-
-	log_file = cleandns.log_file;
-	if (log_file) {
-		open_logfile();
+	
+	if (cleandns.daemonize) {
+		run_as_daemonize(&cleandns);
+		return EXIT_SUCCESS;
 	}
-
-	if (resolve_listens(&cleandns) != 0)
-		return EXIT_FAILURE;
-
-	if (cleandns.china_ip) {
-		if (parse_china_ip(&cleandns))
-			return EXIT_FAILURE;
-	}
-
-	if (cleandns.foreign_ip) {
-		if (parse_foreign_ip(&cleandns))
-			return EXIT_FAILURE;
-	}
-
-	if (parse_chnroute(&cleandns) != 0)
-		return EXIT_FAILURE;
-
-	if (resolve_dns_server(&cleandns) != 0)
-		return EXIT_FAILURE;
-
-	if (cleandns.proxy && resolve_proxy_server(&cleandns) != 0)
-		return EXIT_FAILURE;
-
-	if (cleandns.compression) {
-		int i;
-		dns_server_t* dns_server;
-		for (i = 0; i < cleandns.dns_server_num; i++) {
-			dns_server = cleandns.dns_servers + i;
-			/* only foreign dns server need compression*/
-			if (!test_addr_in_list(
-				dns_server->addr.addrinfo->ai_addr,
-				&cleandns.chnroute_list)) {
-				dns_server->is_foreign = 1;
-			}
-			else {
-				dns_server->is_foreign = 0;
-			}
-		}
-	}
-
-	if (init_listens(&cleandns) != 0)
-		return EXIT_FAILURE;
-
-	if (init_dnsservers(&cleandns) != 0)
-		return EXIT_FAILURE;
-
-	if (cleandns.proxy && init_proxy_udpsock(&cleandns) != 0)
-		return EXIT_FAILURE;
-
-	srand((unsigned int)time(NULL));
 
 #ifdef WINDOWS
 	if (0 == SetConsoleCtrlHandler((PHANDLER_ROUTINE)sig_handler, TRUE)) {
@@ -251,38 +207,25 @@ int main(int argc, char **argv)
 	signal(SIGTERM, sig_handler);
 #endif
 
-	if (cleandns.daemonize) {
-#ifndef WINDOWS
-		if (!cleandns.pid_file) {
-			cleandns.pid_file = strdup(DEFAULT_PID_FILE);
-		}
-#endif
-		run_as_daemonize(&cleandns);
-	}
-
-#ifdef WINDOWS
-	else {
-#endif
+	if (init_cleandns(&cleandns) != 0)
+		return EXIT_FAILURE;
 
 	print_args(&cleandns);
 
 	if (do_loop(&cleandns) != 0)
 		return EXIT_FAILURE;
 
-#ifdef WINDOWS
-	}
-#endif
-
 	free_cleandns(&cleandns);
 
 	if (log_file) {
 		close_logfile();
 	}
-	else if (is_use_syslog) {
+
+	if (is_use_syslog) {
 		close_syslog();
 	}
 
-    return EXIT_SUCCESS;
+	return EXIT_SUCCESS;
 }
 
 static void print_args(cleandns_ctx* cleandns)
@@ -1032,13 +975,12 @@ static int handle_listen_sock(cleandns_ctx *cleandns, listen_t *listen)
            return -1;
         }
 		else {
-			loge("handle_listen_sock() - recvfrom() error: errno=%d, %s\n", errno, strerror(errno));
 			return 0;
 		}
     }
     else {
-        loge("handle_listen_sock: recvfrom()\n");
-        queue_remove(cleandns, req);
+		loge("handle_listen_sock() - recvfrom() error: errno=%d, %s\n", errno, strerror(errno));
+		queue_remove(cleandns, req);
         free_req(req);
         return -1;
     }
@@ -2727,15 +2669,13 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 {
 	int ch;
 	int option_index = 0;
-	const char* launch_log_file = NULL;
-	const char *config_file = NULL;
 	static struct option long_options[] = {
 		{"daemon",    no_argument,       NULL, 1},
 		{"pid",       required_argument, NULL, 2},
 		{"log",       required_argument, NULL, 3},
 		{"log-level", required_argument, NULL, 4},
 		{"config",    required_argument, NULL, 5},
-		{"launch-log",required_argument, NULL, 6},
+		{"launch_log",required_argument, NULL, 6},
 		{"lazy",      no_argument,       NULL, 7},
 		{"proxy",     required_argument, NULL, 8},
 		{0, 0, 0, 0}
@@ -2758,12 +2698,12 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 			loglevel = atoi(optarg);
 			break;
 		case 5:
-			config_file = optarg;
+			cleandns->config_file = strdup(optarg);
 			break;
 		case 6:
-			launch_log_file = optarg;
+			cleandns->launch_log = strdup(optarg);
 			break;
-        case 7:
+		case 7:
             cleandns->lazy = 1;
             break;
 		case 8:
@@ -2815,22 +2755,11 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 		}
 	}
 
-	if (cleandns->log_file) {
-		log_file = cleandns->log_file;
-		launch_log_file = NULL;
-		open_logfile();
-	}
-	else if (launch_log_file) {
-		log_file = launch_log_file;
-		open_logfile();
-	}
+	return 0;
+}
 
-	if (config_file) {
-		if (read_config_file(cleandns, config_file, FALSE)) {
-			return -1;
-		}
-	}
-
+static int check_args(cleandns_ctx* cleandns)
+{
 	if (cleandns->dns_server == NULL) {
 		cleandns->dns_server = strdup(DEFAULT_DNS_SERVER);
 	}
@@ -2864,9 +2793,82 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 
 static int init_cleandns(cleandns_ctx *cleandns)
 {
-	memset(cleandns, 0, sizeof(cleandns_ctx));
+	if (cleandns->log_file) {
+		log_file = cleandns->log_file;
+		open_logfile();
+	}
+	else if (cleandns->launch_log) {
+		log_file = cleandns->launch_log;
+		open_logfile();
+	}
 
-	if (rbtree_init(&cleandns->queue) != 0)
+	if (cleandns->config_file) {
+		if (read_config_file(cleandns, cleandns->config_file, FALSE)) {
+			return -1;
+		}
+
+		/* close, so can reopen by config file */
+		if (log_file) {
+			close_logfile();
+			log_file = NULL;
+		}
+
+		if (cleandns->log_file) {
+			log_file = cleandns->log_file;
+			open_logfile();
+		}
+	}
+
+	if (check_args(cleandns))
+		return -1;
+
+
+	if (resolve_listens(cleandns) != 0)
+		return -1;
+
+	if (cleandns->china_ip) {
+		if (parse_china_ip(cleandns))
+			return -1;
+	}
+
+	if (cleandns->foreign_ip) {
+		if (parse_foreign_ip(cleandns))
+			return -1;
+	}
+
+	if (parse_chnroute(cleandns) != 0)
+		return -1;
+
+	if (resolve_dns_server(cleandns) != 0)
+		return -1;
+
+	if (cleandns->proxy && resolve_proxy_server(cleandns) != 0)
+		return -1;
+
+	if (cleandns->compression) {
+		int i;
+		dns_server_t* dns_server;
+		for (i = 0; i < cleandns->dns_server_num; i++) {
+			dns_server = cleandns->dns_servers + i;
+			/* only foreign dns server need compression*/
+			if (!test_addr_in_list(
+				dns_server->addr.addrinfo->ai_addr,
+				&cleandns->chnroute_list)) {
+				dns_server->is_foreign = 1;
+			}
+			else {
+				dns_server->is_foreign = 0;
+			}
+		}
+	}
+
+	if (init_listens(cleandns) != 0)
+		return -1;
+
+	if (init_dnsservers(cleandns) != 0)
+		return -1;
+
+	if (cleandns->proxy && init_proxy_udpsock(cleandns) != 0)
 		return -1;
 
 	return 0;
@@ -2910,6 +2912,8 @@ static void free_cleandns(cleandns_ctx *cleandns)
 	free(cleandns->pid_file);
 	free(cleandns->log_file);
 	free(cleandns->proxy);
+	free(cleandns->launch_log);
+	free(cleandns->config_file);
 
 	free(cleandns->chnroute_list.nets);
 	free(cleandns->chnroute_list.nets6);
@@ -3115,10 +3119,19 @@ static void ServiceMain(int argc, char** argv)
 	ServiceStatus.dwCurrentState = SERVICE_RUNNING;
 	SetServiceStatus(hStatus, &ServiceStatus);
 
+	if (init_cleandns(s_cleandns) != 0)
+		return;
+
 	print_args(s_cleandns);
 
 	if (do_loop(s_cleandns) != 0)
 		return;
+
+	free_cleandns(s_cleandns);
+
+	if (log_file) {
+		close_logfile();
+	}
 }
 
 static void ControlHandler(DWORD request)
@@ -3161,6 +3174,10 @@ static void run_as_daemonize(cleandns_ctx* cleandns)
 	pid_t pid, sid;
 	int dev_null;
 
+	if (!cleandns->pid_file) {
+		cleandns->pid_file = strdup(DEFAULT_PID_FILE);
+	}
+
 	pid = fork();
 	if (pid < 0) {
 		exit(1);
@@ -3179,6 +3196,9 @@ static void run_as_daemonize(cleandns_ctx* cleandns)
 		
 		exit(0);
 	}
+
+	if (init_cleandns(cleandns) != 0)
+		exit(1);
 
 	umask(0);
 
@@ -3206,6 +3226,21 @@ static void run_as_daemonize(cleandns_ctx* cleandns)
 	}
 
 	close(STDIN_FILENO);
+
+	print_args(cleandns);
+
+	if (do_loop(cleandns) != 0)
+		exit(1);
+
+	free_cleandns(cleandns);
+
+	if (log_file) {
+		close_logfile();
+	}
+	
+	if (is_use_syslog) {
+		close_syslog();
+	}
 
 #endif
 }

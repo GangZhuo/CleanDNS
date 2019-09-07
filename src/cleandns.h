@@ -126,6 +126,8 @@ typedef struct cleandns_ctx {
 	int daemonize;
     int lazy;
 	char *proxy;
+	char *launch_log;
+	char *config_file;
 	net_list_t chnroute_list;
 	dns_server_t dns_servers[MAX_DNS_SERVER];
 	int dns_server_num;
