@@ -152,6 +152,7 @@
     <ClCompile Include="..\src\rbtree.c" />
     <ClCompile Include="..\src\stream.c" />
     <ClCompile Include="..\test\test.c" />
+    <ClCompile Include="win.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\log.h" />

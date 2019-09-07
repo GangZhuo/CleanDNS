@@ -30,6 +30,9 @@
     <ClCompile Include="..\src\stream.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="win.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\log.h">
