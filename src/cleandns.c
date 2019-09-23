@@ -2675,7 +2675,7 @@ static int parse_args(cleandns_ctx *cleandns, int argc, char **argv)
 		{"log",       required_argument, NULL, 3},
 		{"log-level", required_argument, NULL, 4},
 		{"config",    required_argument, NULL, 5},
-		{"launch_log",required_argument, NULL, 6},
+		{"launch-log",required_argument, NULL, 6},
 		{"lazy",      no_argument,       NULL, 7},
 		{"proxy",     required_argument, NULL, 8},
 		{0, 0, 0, 0}
