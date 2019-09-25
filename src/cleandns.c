@@ -1015,41 +1015,15 @@ static int check_rr(cleandns_ctx *cleandns, ns_rr_t *rr)
 	return FLG_NONE;
 }
 
-static int check_ns_msg(cleandns_ctx *cleandns, ns_msg_t *msg)
+static int check_ns_msg_normal(cleandns_ctx* cleandns, ns_msg_t* msg)
 {
 	int i, rrcount, flags = 0;
-	ns_rr_t *rr;
-
-    if (!cleandns->lazy) {
-        int dns_idx;
-        int is_foreign_dns;
-    	dns_server_t* dns_server;
-
-        dns_idx = dns_index(msg->id, cleandns->dns_server_num);
-        dns_server = cleandns->dns_servers + dns_idx;
-        is_foreign_dns = dns_server->is_foreign;
-
-	    if (msg->qdcount == 0)
-	    	return FLG_POLLUTE;
-
-	    if (msg->ancount == 0)
-		    return FLG_POLLUTE;
-
-	    /*if it's come from foreign dns server, it should be have esc.*/
-	    if (is_foreign_dns) {
-		    if (msg->ancount < 2 && msg->arcount == 0)
-			    return FLG_POLLUTE;
-	    }
-    }
+	ns_rr_t* rr;
 
 	rrcount = msg->ancount + msg->nscount;
 	for (i = 0; i < rrcount; i++) {
 		rr = msg->rrs + i;
 		flags |= check_rr(cleandns, rr);
-
-        /* edns should be in additional records section */
-		if (!cleandns->lazy && (flags & FLG_OPT))
-            return FLG_POLLUTE;
 	}
 
 	rrcount = ns_rrcount(msg);
@@ -1059,6 +1033,76 @@ static int check_ns_msg(cleandns_ctx *cleandns, ns_msg_t *msg)
 	}
 
 	return flags;
+}
+
+static int check_ns_msg_pollute(cleandns_ctx* cleandns, ns_msg_t* msg)
+{
+	int i, rrcount, flags = 0;
+	ns_rr_t* rr;
+
+	if (!cleandns->lazy) {
+		int dns_idx;
+		int is_foreign_dns;
+		dns_server_t* dns_server;
+
+		dns_idx = dns_index(msg->id, cleandns->dns_server_num);
+		dns_server = cleandns->dns_servers + dns_idx;
+		is_foreign_dns = dns_server->is_foreign;
+
+		if (msg->qdcount == 0)
+			return FLG_POLLUTE;
+
+		if (msg->ancount == 0)
+			return FLG_POLLUTE;
+
+		/*if it's come from foreign dns server, it should be have esc.*/
+		if (is_foreign_dns) {
+			if (msg->ancount < 2 && msg->arcount == 0)
+				return FLG_POLLUTE;
+		}
+	}
+
+	rrcount = msg->ancount + msg->nscount;
+	for (i = 0; i < rrcount; i++) {
+		rr = msg->rrs + i;
+		flags |= check_rr(cleandns, rr);
+
+		/* edns should be in additional records section */
+		if (!cleandns->lazy && (flags & FLG_OPT))
+			return FLG_POLLUTE;
+	}
+
+	rrcount = ns_rrcount(msg);
+	for (; i < rrcount; i++) {
+		rr = msg->rrs + i;
+		flags |= check_rr(cleandns, rr);
+	}
+
+	return flags;
+}
+
+static int check_ns_msg(cleandns_ctx* cleandns, ns_msg_t* msg)
+{
+	int i, rrcount, flags = 0;
+	ns_rr_t* rr;
+	int by_proxy;
+	int dns_idx;
+	int is_foreign_dns;
+	int is_tcp;
+	dns_server_t* dns_server;
+
+	dns_idx = dns_index(msg->id, cleandns->dns_server_num);
+	dns_server = cleandns->dns_servers + dns_idx;
+	is_foreign_dns = dns_server->is_foreign;
+	by_proxy = is_foreign_dns && cleandns->proxy_server.addr;
+	is_tcp = dns_server->addr.protocol == IPPROTO_TCP;
+	
+	if (by_proxy || is_tcp || !is_foreign_dns) {
+		return check_ns_msg_normal(cleandns, msg);
+	}
+	else {
+		return check_ns_msg_pollute(cleandns, msg);
+	}
 }
 
 static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
