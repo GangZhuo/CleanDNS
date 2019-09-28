@@ -61,7 +61,7 @@
 #define WSAEWOULDBLOCK EINPROGRESS
 #endif
 
-#define fix_reqid(pid, num) ((*pid) = ((*pid) / (2 * (num))) * (num) * 2)
+#define fix_reqid(pid, num) ((*(pid)) = ((*(pid)) / (2 * (num))) * (num) * 2)
 #define ext_num(msgid, num) ((msgid) - (((msgid) / (2 * num) ) * (num) * 2))
 #define is_foreign(msgid, num) (ext_num((msgid), (num)) >= (num))
 #define dns_index(msgid, num) ((ext_num((msgid), (num)) >= (num)) ? (ext_num((msgid), (num)) - (num)) : (ext_num((msgid), (num))))
@@ -602,23 +602,23 @@ static int get_answers(stream_t *s, ns_msg_t *msg)
 			len += r;
 		}
 		else if (rr->type == NS_QTYPE_PTR) {
-			r = stream_writef(s, len > 0 ? ", %s" : "%s", rr->rdata);
+			r = stream_writef(s, len > 0 ? ", prt: %s" : "prt: %s", rr->rdata);
 			if (r < 0)
 				return -1;
 			len += r;
 		}
 		else if (rr->type == NS_QTYPE_CNAME) {
-			/*r = stream_writef(s, len > 0 ? ", cname: %s" : "cname: %s", rr->rdata);
+			r = stream_writef(s, len > 0 ? ", cname: %s" : "cname: %s", rr->rdata);
 			if (r < 0)
 				return -1;
-			len += r;*/
+			len += r;
 		}
 		else if (rr->type == NS_QTYPE_SOA) {
-			/*ns_soa_t *soa = rr->rdata;
+			ns_soa_t *soa = rr->rdata;
 			r = stream_writef(s, len > 0 ? ", ns1: %s, ns2: %s" : "ns1: %s, ns2: %s", soa->mname, soa->rname);
 			if (r < 0)
 				return -1;
-			len += r;*/
+			len += r;
 		}
 		else {
 			/* do nothing */
@@ -1083,8 +1083,7 @@ static int check_ns_msg_pollute(cleandns_ctx* cleandns, ns_msg_t* msg)
 
 static int check_ns_msg(cleandns_ctx* cleandns, ns_msg_t* msg)
 {
-	int i, rrcount, flags = 0;
-	ns_rr_t* rr;
+	int flags = 0;
 	int by_proxy;
 	int dns_idx;
 	int is_foreign_dns;
@@ -2109,7 +2108,12 @@ static int resolve_dns_server(cleandns_ctx *cleandns)
 
 static int cmp_net_mask(const void *a, const void *b)
 {
-	return ((net_mask_t *)a)->net - ((net_mask_t *)b)->net;
+	uint32_t x, y;
+	x = ((net_mask_t*)a)->net;
+	y = ((net_mask_t*)b)->net;
+	if (x < y) return -1;
+	else if (x > y) return 1;
+	else return 0;
 }
 
 static int cmp_net_mask6(const void *a, const void *b)
@@ -2129,6 +2133,7 @@ static int test_ip_in_list4(struct in_addr *ip, const net_list_t *netlist)
 	int l = 0, r = netlist->entries - 1;
 	int m, cmp;
 	net_mask_t ip_net;
+	net_mask_t* find;
 	if (netlist->entries == 0)
 		return 0;
 	ip_net.net = ntohl(ip->s_addr);
@@ -2148,11 +2153,11 @@ static int test_ip_in_list4(struct in_addr *ip, const net_list_t *netlist)
                 break;
         }
     }
-    if ((netlist->nets[l].net ^ ip_net.net) &
-            (UINT32_MAX ^ netlist->nets[l].mask)) {
-        return 0;
-    }
-    return 1;
+	find = &netlist->nets[l];
+	if ((ip_net.net & find->mask) != find->net) {
+		return 0;
+	}
+	return 1;
 }
 
 static int test_ip_in_list6(struct in6_addr*ip, const net_list_t *netlist)
@@ -2186,7 +2191,7 @@ static int test_ip_in_list6(struct in6_addr*ip, const net_list_t *netlist)
 	}
 	find = &netlist->nets6[l];
 	for (i = 0; i < 4; i++) {
-		if ((find->net[i] ^ ip_net.net[i]) & find->mask[i]) {
+		if ((ip_net.net[i] & find->mask[i]) != find->net[i]) {
 			return 0;
 		}
 	}
@@ -2245,8 +2250,8 @@ static int parse_netmask(net_mask_t *netmask, char *line)
 	sp_pos = strchr(line, '/');
     if (sp_pos) {
         *sp_pos = 0;
-        netmask->mask = (1 << (32 - atoi(sp_pos + 1))) - 1;
-    }
+		netmask->mask = UINT32_MAX ^ (((uint32_t)1 << (32 - atoi(sp_pos + 1))) - 1);
+	}
     else {
         netmask->mask = UINT32_MAX;
     }
