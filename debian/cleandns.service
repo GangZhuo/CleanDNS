@@ -1,0 +1,17 @@
+[Unit]
+Description=CleanDNS
+Documentation=https://github.com/GangZhuo/CleanDNS
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=root
+Group=root
+WorkingDirectory=/tmp
+ExecStart=/usr/local/bin/cleandns --config=/etc/cleandns/cleandns.config --daemon --pid=/var/run/cleandns.pid
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
