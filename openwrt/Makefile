@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=CleanDNS
-PKG_VERSION:=0.4.3
+PKG_VERSION:=0.4.4
 PKG_RELEASE:=master
 PKG_BUILD_PARALLEL:=1
 
