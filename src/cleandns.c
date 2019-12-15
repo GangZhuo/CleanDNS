@@ -28,7 +28,7 @@
 #include "dllist.h"
 
 #define CLEANDNS_NAME    "CleanDNS"
-#define CLEANDNS_VERSION "0.4.3"
+#define CLEANDNS_VERSION "0.4.4"
 
 #define DEFAULT_DNS_SERVER "8.8.8.8:53,114.114.114.114:53"
 #define DEFAULT_LISTEN_ADDR "0.0.0.0"
