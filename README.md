@@ -1,5 +1,10 @@
 # CleanDNS
 
+CleanDNS 用于在本地提供一个无污染的 DNS 服务，她通过 socks5 代理来转发 DNS 请求。CleanDNS 还支持 ECS,
+这对需先获取 IP 然后根据 IP 选择是否需要通过代理访问的情况下非常有用，例如，与 [http-proxy] 结合使用。
+
+参考 [使用说明]。
+
 Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
 
 #### Appveyor
@@ -257,6 +262,8 @@ You can generate latest chnroute6.txt using this command:
 * [RFC 7873 Domain Name System (DNS) Cookies]
 * [Domain Name System (DNS) Parameters]
 
+[使用说明]: https://github.com/GangZhuo/CleanDNS/wiki/%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E
+[http-proxy]: https://github.com/GangZhuo/http-proxy
 [ChinaDNS]:  https://github.com/shadowsocks/ChinaDNS
 [About chnroute]:  https://github.com/shadowsocks/ChinaDNS#about-chnroute
 [RFC 1035 DOMAIN NAMES - IMPLEMENTATION AND SPECIFICATION]:  https://www.ietf.org/rfc/rfc1035.txt	
