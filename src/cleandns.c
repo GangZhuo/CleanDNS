@@ -264,9 +264,6 @@ static void print_args(cleandns_ctx* cleandns)
 #endif
 	if (cleandns->log_file)
 		logn("log_file: %s\n", cleandns->log_file);
-
-	if (loglevel >= LOG_INFO) {
-	}
 }
 
 static int cb_req_list(rbtree_t* tree, rbnode_t* x, void* state)
