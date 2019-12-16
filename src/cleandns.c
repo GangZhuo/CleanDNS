@@ -28,7 +28,7 @@
 #include "dllist.h"
 
 #define CLEANDNS_NAME    "CleanDNS"
-#define CLEANDNS_VERSION "0.4.4"
+#define CLEANDNS_VERSION "0.4.5"
 
 #define DEFAULT_DNS_SERVER "8.8.8.8:53,114.114.114.114:53"
 #define DEFAULT_LISTEN_ADDR "0.0.0.0"
@@ -231,12 +231,22 @@ int main(int argc, char **argv)
 static void print_args(cleandns_ctx* cleandns)
 {
 	int i;
+	dns_server_t* dns_server;
 	for (i = 0; i < cleandns->listen_num; i++) {
 		logn("%s listen on %s\n",
 			cleandns->listens[i].addr.protocol == IPPROTO_TCP ? "TCP" : "UDP",
 			get_netaddrname(&cleandns->listens[i].addr));
 	}
-	logn("dns server: %s\n", cleandns->dns_server);
+	logn("dns server:\n");
+	for (i = 0; i < cleandns->dns_server_num; i++) {
+		dns_server = cleandns->dns_servers + i;
+		logn("  %d. '%s': %s%s%s\n",
+			i + 1,
+			get_dnsservername(dns_server),
+			dns_server->is_foreign ? "foreign, " : "china, ",
+			dns_server->is_foreign && cleandns->compression ? "compression, " : "",
+			dns_server->addr.protocol == IPPROTO_TCP ? "TCP" : "UDP");
+	}
 	logn("chnroute: %s\n", cleandns->chnroute_file);
 	logn("china ip: %s\n", cleandns->china_ip);
 	logn("foreign ip: %s\n", cleandns->foreign_ip);
@@ -255,17 +265,7 @@ static void print_args(cleandns_ctx* cleandns)
 	if (cleandns->log_file)
 		logn("log_file: %s\n", cleandns->log_file);
 
-	if (loglevel >= LOG_INFO && cleandns->compression) {
-		dns_server_t* dns_server;
-		logi("\n");
-		for (i = 0; i < cleandns->dns_server_num; i++) {
-			dns_server = cleandns->dns_servers + i;
-			logi("compression %s on %s %s\n",
-				dns_server->is_foreign ? "enabled" : "disabled",
-				dns_server->addr.protocol == IPPROTO_TCP ? "TCP" : "UDP",
-				get_dnsservername(dns_server));
-		}
-		logi("\n");
+	if (loglevel >= LOG_INFO) {
 	}
 }
 
@@ -437,9 +437,9 @@ static int do_loop(cleandns_ctx *cleandns)
 						if (conn->status == CONN_CONNECTING) {
 							dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
 							conn->status = CONN_CONNECTED;
-							logd("connected to '%s' (TCP)(sock=%d)\n",
+							logi("connected to '%s'%s (TCP)\n",
 								get_dnsservername(dns_server),
-								conn->sock);
+								conn->by_proxy ? " by proxy" : "");
 						}
 						if (tcp_send(cleandns, conn) == -1) {
 							dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
@@ -726,15 +726,15 @@ static int send_nsmsg_to_dns_server(cleandns_ctx *cleandns, ns_msg_t *msg,
 
 	if (loglevel >= LOG_INFO) {
 		if (subnet) {
-			logi("send msg to '%s'%s with '%s'\n",
-				get_addrname(to),
-				is_tcp ? " (TCP)" : "",
-				subnet->name);
+			logi("building msg with '%s' - %s://%s\n",
+				subnet->name,
+				is_tcp ? "tcp" : "udp",
+				get_addrname(to));
 		}
 		else {
-			logi("send msg to '%s'%s\n",
-				get_addrname(to),
-				is_tcp ? " (TCP)" : "");
+			logi("building msg - %s://%s\n",
+				is_tcp ? "tcp" : "udp",
+				get_addrname(to));
 		}
 	}
 
@@ -776,8 +776,9 @@ static int send_nsmsg_to_dns_server(cleandns_ctx *cleandns, ns_msg_t *msg,
 		stream_seti16(&s, 0, len);
 	}
 
-	logd("send data to '%s' %s:\n", get_addrname(to), is_tcp ? " (TCP)" : "");
-	bprint(s.array, s.size);
+	if (loglevel >= LOG_DEBUG) {
+		bprint(s.array, s.size);
+	}
 
 	if (is_tcp) {
 		if (req->conn_num >= MAX_NS_MSG) {
@@ -806,11 +807,16 @@ static int send_nsmsg_to_dns_server(cleandns_ctx *cleandns, ns_msg_t *msg,
 			}
 		}
 		else {
-			logd("send_nsmsg_to_dns_server: connecting '%s' ... (TCP)(sock=%d)\n",
-				get_dnsservername(dns_server), conn->sock);
+			logi("connecting '%s'%s ... (TCP)\n",
+				get_dnsservername(dns_server),
+				conn->by_proxy ? " by proxy" : "");
 		}
 	}
 	else {
+		logi("send msg (%d bytes) to '%s'%s\n",
+			s.size,
+			get_dnsservername(dns_server),
+			(dns_server->is_foreign&& cleandns->proxy_server.addr) ? " by proxy" : "");
 		if (sendto(sock, s.array, s.size, 0, to, tolen) == -1) {
 			loge("send_nsmsg_to_dns_server(): cannot send data to '%s': sendto() error: errno=%d, %s\n",
 				get_addrname(to), errno, strerror(errno));
@@ -1729,8 +1735,9 @@ static int connect_server(cleandns_ctx *cleandns, conn_t *conn, dns_server_t *se
 	conn->status = CONN_CONNECTED;
 	conn->sock = sock;
 
-	logd("connected to '%s' (TCP)(sock=%d)\n",
-		get_dnsservername(server), conn->sock);
+	logi("connected to '%s'%s (TCP)\n",
+		conn->by_proxy ? " by proxy" : "",
+		get_dnsservername(server));
 
 	return 0;
 }
@@ -1819,6 +1826,14 @@ static int init_dnsservers(cleandns_ctx *cleandns)
 	for (i = 0; i < num; i++) {
 		dnsserver = cleandns->dns_servers + i;
 		is_tcp = dnsserver->addr.protocol == IPPROTO_TCP;
+		if (!test_addr_in_list(
+			dnsserver->addr.addrinfo->ai_addr,
+			&cleandns->chnroute_list)) {
+			dnsserver->is_foreign = 1;
+		}
+		else {
+			dnsserver->is_foreign = 0;
+		}
 		if (is_tcp) continue;
 		addrinfo = dnsserver->addr.addrinfo;
 		sock = socket(
@@ -2893,23 +2908,6 @@ static int init_cleandns(cleandns_ctx *cleandns)
 
 	if (cleandns->proxy && resolve_proxy_server(cleandns) != 0)
 		return -1;
-
-	if (cleandns->compression) {
-		int i;
-		dns_server_t* dns_server;
-		for (i = 0; i < cleandns->dns_server_num; i++) {
-			dns_server = cleandns->dns_servers + i;
-			/* only foreign dns server need compression*/
-			if (!test_addr_in_list(
-				dns_server->addr.addrinfo->ai_addr,
-				&cleandns->chnroute_list)) {
-				dns_server->is_foreign = 1;
-			}
-			else {
-				dns_server->is_foreign = 0;
-			}
-		}
-	}
 
 	if (init_listens(cleandns) != 0)
 		return -1;
