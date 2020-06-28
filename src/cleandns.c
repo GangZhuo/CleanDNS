@@ -1605,6 +1605,30 @@ static int setnonblock(sock_t sock)
 	return 0;
 }
 
+static int setreuseaddr(sock_t sock)
+{
+	int opt = 1;
+
+	if (setsockopt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, &opt, sizeof(opt)) != 0) {
+		loge("setsockopt() error: errno=%d, %s\n", errno, strerror(errno));
+		return -1;
+	}
+
+	return 0;
+}
+
+static int setnodelay(sock_t sock)
+{
+	int opt = 1;
+
+	if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt)) != 0) {
+		loge("setsockopt() error: errno=%d, %s\n", errno, strerror(errno));
+		return -1;
+	}
+
+	return 0;
+}
+
 static int tcp_send(cleandns_ctx* cleandns, conn_t* conn)
 {
 	dns_server_t* dns_server = &cleandns->dns_servers[conn->dns_server_index];
@@ -1691,9 +1715,14 @@ static int connect_server(cleandns_ctx *cleandns, conn_t *conn, dns_server_t *se
 			loge("connect_server(): Can't create proxy socket to '%s'. socket() error: errno=%d, %s\n",
 				get_dnsservername(server), errno, strerror(errno));
 			return -1;
-	}
+		}
 
 		if (setnonblock(sock) != 0) {
+			close(sock);
+			return -1;
+		}
+
+		if (setnodelay(sock) != 0) {
 			close(sock);
 			return -1;
 		}
@@ -1710,6 +1739,11 @@ static int connect_server(cleandns_ctx *cleandns, conn_t *conn, dns_server_t *se
 		}
 
 		if (setnonblock(sock) != 0) {
+			close(sock);
+			return -1;
+		}
+
+		if (setnodelay(sock) != 0) {
 			close(sock);
 			return -1;
 		}
@@ -1755,6 +1789,12 @@ static int init_listen(cleandns_ctx *cleandns, listen_t *ctx)
 
 	if (!sock) {
 		loge("init_listen() - socket() error: errno=%d, %s\n", errno, strerror(errno));
+		return -1;
+	}
+
+	if (setreuseaddr(sock) != 0) {
+		loge("init_listen() error: set sock reuse address failed\n");
+		close(sock);
 		return -1;
 	}
 
