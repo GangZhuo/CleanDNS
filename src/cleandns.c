@@ -62,6 +62,10 @@
 #define WSAEWOULDBLOCK EINPROGRESS
 #endif
 
+#ifndef SO_EXCLUSIVEADDRUSE
+#define SO_EXCLUSIVEADDRUSE SO_REUSEADDR
+#endif
+
 #define fix_reqid(pid, num) ((*(pid)) = ((*(pid)) / (2 * (num))) * (num) * 2)
 #define ext_num(msgid, num) ((msgid) - (((msgid) / (2 * num) ) * (num) * 2))
 #define is_foreign(msgid, num) (ext_num((msgid), (num)) >= (num))
