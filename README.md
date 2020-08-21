@@ -10,7 +10,7 @@ Non-polluting DNS. Forward DNS requests with ECS (edns-client-subnet) support.
 #### 已知问题
 
 * c-ares 默认的缓存大小为 512 字节，他首先使用 UDP 查询，当返回的结果超过 512 字节时，c-ares 会使用 TCP 协议再次查询一次，
-  CleanDNS 不支持 TCP 查询，因此会导致 c-ares 无法获取到查询结果。
+  CleanDNS 不支持 TCP 查询，因此会导致 c-ares 无法获取到查询结果。(可以尝试使用 https://github.com/GangZhuo/dohclient 替代 CleanDNS)
 
 #### Appveyor
 
