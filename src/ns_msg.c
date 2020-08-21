@@ -1417,6 +1417,15 @@ static ns_ecs_t* ns_parse_ect(ns_ecs_t *ecs, char *data, int len)
 	return ecs;
 }
 
+int ns_try_read_ecs(ns_msg_t* msg, ns_ecs_t *ecs)
+{
+	ns_opt_t* opt = ns_find_ecs(msg, NULL);
+	if (!opt) return FALSE;
+	if (!ns_parse_ect(ecs, opt->data, opt->length))
+		return FALSE;
+	return TRUE;
+}
+
 static void ns_rdata_print_edns(ns_rr_t *rr)
 {
 	ns_optlist_t *opts = rr->rdata;

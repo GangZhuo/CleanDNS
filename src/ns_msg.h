@@ -211,6 +211,8 @@ static inline ns_opt_t* ns_find_ecs(ns_msg_t* msg, ns_rr_t** prr)
 
 int ns_optrr_set_ecs(ns_rr_t *rr, struct sockaddr *addr, int srcprefix, int scopeprefix);
 
+int ns_try_read_ecs(ns_msg_t* msg, ns_ecs_t* ecs);
+
 int ns_serialize(stream_t *s, ns_msg_t *msg, int compression);
 
 void ns_print(ns_msg_t *msg);

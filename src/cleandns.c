@@ -1112,6 +1112,67 @@ static int check_ns_msg(cleandns_ctx* cleandns, ns_msg_t* msg)
 	}
 }
 
+static int is_subnet_match(void* a, void* b, int max_len, int prefix)
+{
+	int addrlen;
+	uint8_t mask = 0xff;
+	uint8_t copiedA[16], copiedB[16];
+
+	memcpy(copiedA, a, max_len);
+	memcpy(copiedB, b, max_len);
+
+	addrlen = prefix / 8;
+	if (prefix % 8)
+		addrlen++;
+
+	if (prefix % 8) {
+		mask <<= (8 - (prefix % 8));
+		copiedA[addrlen - 1] &= mask;
+		copiedB[addrlen - 1] &= mask;
+	}
+
+	return memcmp(copiedA, copiedB, addrlen) == 0;
+}
+
+static int is_foreign_ecs_subnet(cleandns_ctx* cleandns, ns_msg_t* msg)
+{
+	ns_ecs_t ecs;
+
+	if (msg->qrs && msg->qrs->qtype == NS_QTYPE_A) {
+		if (!cleandns->foreign_net.is_set)
+			return FALSE;
+
+		/* No ECS */
+		if (!ns_try_read_ecs(msg, &ecs))
+			return FALSE;
+
+		if (ecs.family == ADDR_FAMILY_NUM_IP) {
+			struct in_addr* ip = &((struct sockaddr_in*)&cleandns->foreign_net.addr)->sin_addr;
+			return is_subnet_match(ip, (struct in_addr*)ecs.subnet, 4, cleandns->foreign_net.mask);
+		}
+
+		return FALSE;
+	}
+	else if (msg->qrs && msg->qrs->qtype == NS_QTYPE_AAAA) {
+		if (!cleandns->foreign_net6.is_set)
+			return FALSE;
+
+		/* No ECS */
+		if (!ns_try_read_ecs(msg, &ecs))
+			return FALSE;
+
+		if (ecs.family == ADDR_FAMILY_NUM_IP6) {
+			struct in6_addr* ip = &((struct sockaddr_in6*)&cleandns->foreign_net6.addr)->sin6_addr;
+			return is_subnet_match(ip, (struct in6_addr*)ecs.subnet, 16, cleandns->foreign_net6.mask);
+		}
+
+		return FALSE;
+	}
+	 
+
+	return FALSE;
+}
+
 static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 {
 	ns_msg_t* best = NULL;
@@ -1146,7 +1207,7 @@ static int response_best_nsmsg(cleandns_ctx* cleandns, req_t* req)
 					int chnip, chnsubnet, chndns;
 
 					chnip = (flags & (FLG_A_CHN | FLG_AAAA_CHN)); /* have chinese ip(s) in result */
-					chnsubnet = !is_foreign(msg->id, cleandns->dns_server_num); /* edns-client-subnet with chinese ip */
+					chnsubnet = !is_foreign_ecs_subnet(cleandns, msg); /* edns-client-subnet with chinese ip */
 					chndns = test_addr_in_list(dns_server->addr.addrinfo->ai_addr, &cleandns->chnroute_list); /* from china dns server */
 
 					score[i] += 1;
