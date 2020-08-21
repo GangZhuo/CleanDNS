@@ -1142,13 +1142,16 @@ static int is_foreign_ecs_subnet(cleandns_ctx* cleandns, ns_msg_t* msg)
 		if (!cleandns->foreign_net.is_set)
 			return FALSE;
 
-		/* No ECS */
+		/* No ECS. May be polluted or the server do not support EDNS */
 		if (!ns_try_read_ecs(msg, &ecs))
 			return FALSE;
 
 		if (ecs.family == ADDR_FAMILY_NUM_IP) {
 			struct in_addr* ip = &((struct sockaddr_in*)&cleandns->foreign_net.addr)->sin_addr;
 			return is_subnet_match(ip, (struct in_addr*)ecs.subnet, 4, cleandns->foreign_net.mask);
+		}
+		else {
+			/* Polluted */
 		}
 
 		return FALSE;
@@ -1157,13 +1160,16 @@ static int is_foreign_ecs_subnet(cleandns_ctx* cleandns, ns_msg_t* msg)
 		if (!cleandns->foreign_net6.is_set)
 			return FALSE;
 
-		/* No ECS */
+		/* No ECS. May be polluted or the server do not support EDNS */
 		if (!ns_try_read_ecs(msg, &ecs))
 			return FALSE;
 
 		if (ecs.family == ADDR_FAMILY_NUM_IP6) {
 			struct in6_addr* ip = &((struct sockaddr_in6*)&cleandns->foreign_net6.addr)->sin6_addr;
 			return is_subnet_match(ip, (struct in6_addr*)ecs.subnet, 16, cleandns->foreign_net6.mask);
+		}
+		else {
+			/* Polluted */
 		}
 
 		return FALSE;
